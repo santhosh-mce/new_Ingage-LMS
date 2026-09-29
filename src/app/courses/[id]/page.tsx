@@ -8,7 +8,7 @@ import { useAuth } from "@/context/AuthContext";
 export default function CourseDetailPageWrapper() {
   const router = useRouter();
   const params = useParams();
-  const { currentUser } = useAuth();
+  const { currentUser, openAuthModal } = useAuth();
   const courseId = (params?.id as string) || "1";
   const [mounted, setMounted] = useState(false);
 
@@ -30,7 +30,9 @@ export default function CourseDetailPageWrapper() {
       courseId={courseId}
       currentUser={currentUser}
       onNavigate={(path: string) => router.push(path)}
-      onOpenAuth={() => {}}
+      onOpenAuth={(mode?: 'login' | 'signup', redirectUrl?: string) => {
+        openAuthModal(mode || 'login', redirectUrl || `/courses/${courseId}`);
+      }}
     />
   );
 }

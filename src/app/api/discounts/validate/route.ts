@@ -1,9 +1,18 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { getSessionUser } from "@/lib/auth";
 import { serializeData } from "@/lib/utils";
 
 export async function POST(req: Request) {
   try {
+    const user = await getSessionUser(req);
+    if (!user) {
+      return NextResponse.json(
+        { error: "Please log in to apply a coupon" },
+        { status: 401 }
+      );
+    }
+
     const { code, amount } = await req.json();
     if (!code) {
       return NextResponse.json({ error: "Coupon code required" }, { status: 400 });

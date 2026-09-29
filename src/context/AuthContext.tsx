@@ -1,5 +1,5 @@
 "use client";
-import React, { createContext, useContext, useCallback, useEffect } from 'react';
+import React, { createContext, useContext, useCallback, useEffect, useState } from 'react';
 import { UserProfile } from '../types';
 import { useAppDispatch, useAppSelector } from '../store/hooks';
 import {
@@ -19,6 +19,11 @@ export interface AuthContextType {
   logout: () => Promise<void>;
   updateUser: (user: Partial<UserProfile>) => void;
   refreshUser: () => Promise<UserProfile | null>;
+  isAuthModalOpen: boolean;
+  authModalMode: 'login' | 'signup' | 'forgot-password';
+  authRedirectUrl: string | null;
+  openAuthModal: (mode?: 'login' | 'signup' | 'forgot-password', redirectUrl?: string) => void;
+  closeAuthModal: () => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -28,6 +33,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const { user: currentUser, token, isAuthenticated, loading: isAuthLoading } = useAppSelector(
     (state) => state.auth
   );
+
+  const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
+  const [authModalMode, setAuthModalMode] = useState<'login' | 'signup' | 'forgot-password'>('login');
+  const [authRedirectUrl, setAuthRedirectUrl] = useState<string | null>(null);
 
   // Initial validation & refresh on mount
   useEffect(() => {
@@ -86,6 +95,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return null;
   }, [dispatch]);
 
+  const openAuthModal = useCallback(
+    (mode: 'login' | 'signup' | 'forgot-password' = 'login', redirectUrl?: string) => {
+      setAuthModalMode(mode);
+      if (redirectUrl) {
+        setAuthRedirectUrl(redirectUrl);
+      } else {
+        setAuthRedirectUrl(null);
+      }
+      setIsAuthModalOpen(true);
+    },
+    []
+  );
+
+  const closeAuthModal = useCallback(() => {
+    setIsAuthModalOpen(false);
+  }, []);
+
   const value: AuthContextType = {
     currentUser,
     isAuthenticated,
@@ -95,6 +121,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     logout,
     updateUser,
     refreshUser,
+    isAuthModalOpen,
+    authModalMode,
+    authRedirectUrl,
+    openAuthModal,
+    closeAuthModal,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

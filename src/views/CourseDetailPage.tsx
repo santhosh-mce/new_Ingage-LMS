@@ -123,6 +123,17 @@ export const CourseDetailPage: React.FC<CourseDetailPageProps> = ({
 
   const handleApplyCoupon = async () => {
     if (!couponCode.trim() || !course) return;
+
+    if (!currentUser) {
+      try {
+        sessionStorage.setItem('ingage_pending_coupon', couponCode.trim());
+      } catch {}
+      setCouponError('Please login to apply a coupon.');
+      if (onShowToast) onShowToast('Please login to apply a coupon.', 'info');
+      onOpenAuth('login', `/courses/${numericCourseId}`);
+      return;
+    }
+
     setCouponLoading(true);
     setCouponError(null);
     try {
@@ -134,12 +145,20 @@ export const CourseDetailPage: React.FC<CourseDetailPageProps> = ({
           discountAmount: res.discountAmount || 0,
           finalAmount: res.finalAmount,
         });
+        try {
+          sessionStorage.removeItem('ingage_pending_coupon');
+        } catch {}
         if (onShowToast) onShowToast(`Coupon "${couponCode.trim()}" applied successfully!`, 'success');
       } else {
         setCouponError(res.message || 'Invalid or expired coupon code.');
       }
     } catch (err: any) {
-      setCouponError('Failed to validate coupon. Please try again.');
+      if (err.response?.status === 401) {
+        setCouponError('Please login to apply a coupon.');
+        onOpenAuth('login', `/courses/${numericCourseId}`);
+      } else {
+        setCouponError('Failed to validate coupon. Please try again.');
+      }
     } finally {
       setCouponLoading(false);
     }
@@ -172,7 +191,12 @@ export const CourseDetailPage: React.FC<CourseDetailPageProps> = ({
 
   const handleEnrollOrBuy = async () => {
     if (!currentUser) {
-      if (onShowToast) onShowToast('Please sign in or register to enroll in this course.', 'info');
+      if (couponCode.trim()) {
+        try {
+          sessionStorage.setItem('ingage_pending_coupon', couponCode.trim());
+        } catch {}
+      }
+      if (onShowToast) onShowToast('Login required to purchase this course.', 'info');
       onOpenAuth('login', `/courses/${numericCourseId}`);
       return;
     }
@@ -520,7 +544,12 @@ export const CourseDetailPage: React.FC<CourseDetailPageProps> = ({
                                     ) : (
                                       <button
                                         onClick={() => {
-                                          if (onShowToast) onShowToast('Enroll in this course to unlock all lessons and learning videos.', 'info');
+                                          if (!currentUser) {
+                                            if (onShowToast) onShowToast('Please login to enroll and unlock lessons.', 'info');
+                                            onOpenAuth('login', `/courses/${numericCourseId}`);
+                                          } else {
+                                            if (onShowToast) onShowToast('Enroll in this course to unlock all lessons and learning videos.', 'info');
+                                          }
                                         }}
                                         className="text-xs font-medium text-gray-400 hover:text-gray-600 cursor-pointer flex items-center gap-1"
                                         title="Enroll in course to unlock"
@@ -660,10 +689,28 @@ export const CourseDetailPage: React.FC<CourseDetailPageProps> = ({
                     )}
                   </div>
                   {couponError && (
-                    <p className="text-xs text-red-600 font-medium mt-1.5 flex items-center gap-1">
-                      <AlertCircle className="w-3.5 h-3.5 shrink-0" />
-                      <span>{couponError}</span>
-                    </p>
+                    <div className="text-xs text-red-600 font-medium mt-1.5 flex items-center justify-between gap-1">
+                      <div className="flex items-center gap-1">
+                        <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                        <span>{couponError}</span>
+                      </div>
+                      {!currentUser && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (couponCode.trim()) {
+                              try {
+                                sessionStorage.setItem('ingage_pending_coupon', couponCode.trim());
+                              } catch {}
+                            }
+                            onOpenAuth('login', `/courses/${numericCourseId}`);
+                          }}
+                          className="text-xs text-lime-700 font-bold hover:underline cursor-pointer ml-2 shrink-0"
+                        >
+                          Login
+                        </button>
+                      )}
+                    </div>
                   )}
                 </div>
               )}

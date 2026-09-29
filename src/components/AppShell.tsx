@@ -11,24 +11,27 @@ import { useAuth } from "@/context/AuthContext";
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname() || "/";
   const router = useRouter();
-  const { currentUser, logout } = useAuth();
+  const {
+    currentUser,
+    logout,
+    isAuthModalOpen,
+    authModalMode,
+    authRedirectUrl,
+    openAuthModal,
+    closeAuthModal,
+  } = useAuth();
 
   const [toastMessage, setToastMessage] = useState<string | null>(null);
-  const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
-  const [authModalMode, setAuthModalMode] = useState<"login" | "signup" | "forgot-password">("login");
 
   React.useEffect(() => {
     if (pathname === '/login') {
-      setAuthModalMode('login');
-      setIsAuthModalOpen(true);
+      openAuthModal('login');
     } else if (pathname === '/signup') {
-      setAuthModalMode('signup');
-      setIsAuthModalOpen(true);
+      openAuthModal('signup');
     } else if (pathname === '/forgot-password' || pathname === '/reset-password') {
-      setAuthModalMode('forgot-password');
-      setIsAuthModalOpen(true);
+      openAuthModal('forgot-password');
     }
-  }, [pathname]);
+  }, [pathname, openAuthModal]);
 
   const navigate = (p: string) => {
     router.push(p);
@@ -39,9 +42,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     setTimeout(() => setToastMessage(null), 4000);
   };
 
-  const handleOpenAuth = (mode: "login" | "signup" | "forgot-password" = "login") => {
-    setAuthModalMode(mode);
-    setIsAuthModalOpen(true);
+  const handleOpenAuth = (mode: "login" | "signup" | "forgot-password" = "login", redirectUrl?: string) => {
+    openAuthModal(mode, redirectUrl);
   };
 
   const isAdminRoute = pathname.startsWith("/admin");
@@ -88,10 +90,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <AuthModal
         isOpen={isAuthModalOpen}
         initialMode={authModalMode}
-        onClose={() => setIsAuthModalOpen(false)}
+        onClose={closeAuthModal}
         onSuccess={() => {
-          setIsAuthModalOpen(false);
+          closeAuthModal();
           showToast("Authentication successful!");
+          if (authRedirectUrl) {
+            navigate(authRedirectUrl);
+          }
         }}
         onNavigate={navigate}
       />
