@@ -41,9 +41,14 @@ export function resolveUploadFile(relativePath: string): string | null {
   const searchRoots = [
     path.join(process.cwd(), "uploads"),
     path.join(process.cwd(), "public", "uploads"),
-    "D:/Ingage project/nextjs-lms/uploads",
-    "D:/Ingage project/Backend/uploads",
   ];
+
+  if (process.env.NODE_ENV !== "production") {
+    const devBackend = path.resolve(process.cwd(), "..", "Backend", "uploads");
+    if (fs.existsSync(devBackend)) {
+      searchRoots.push(devBackend);
+    }
+  }
 
   for (const root of searchRoots) {
     const candidate = path.join(root, cleanPath);

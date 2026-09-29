@@ -49,7 +49,6 @@ export async function POST(req: Request) {
       where: { id: tokenRecord.user_id },
       data: {
         password_hash: passwordHash,
-        updated_at: new Date(),
       },
     });
 
