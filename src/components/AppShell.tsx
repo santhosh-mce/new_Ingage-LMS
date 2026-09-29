@@ -15,7 +15,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
-  const [authModalMode, setAuthModalMode] = useState<"login" | "signup">("login");
+  const [authModalMode, setAuthModalMode] = useState<"login" | "signup" | "forgot-password">("login");
 
   React.useEffect(() => {
     if (pathname === '/login') {
@@ -23,6 +23,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       setIsAuthModalOpen(true);
     } else if (pathname === '/signup') {
       setAuthModalMode('signup');
+      setIsAuthModalOpen(true);
+    } else if (pathname === '/forgot-password' || pathname === '/reset-password') {
+      setAuthModalMode('forgot-password');
       setIsAuthModalOpen(true);
     }
   }, [pathname]);
@@ -36,7 +39,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     setTimeout(() => setToastMessage(null), 4000);
   };
 
-  const handleOpenAuth = (mode: "login" | "signup" = "login") => {
+  const handleOpenAuth = (mode: "login" | "signup" | "forgot-password" = "login") => {
     setAuthModalMode(mode);
     setIsAuthModalOpen(true);
   };

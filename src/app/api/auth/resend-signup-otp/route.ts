@@ -13,28 +13,20 @@ export async function POST(req: Request) {
 
     const cleanEmail = email.toLowerCase().trim();
 
-    // Check account existence without exposing enumeration risk
-    const user = await prisma.users.findUnique({
+    const pending = await prisma.pending_registrations.findUnique({
       where: { email: cleanEmail },
     });
 
-    if (!user) {
-      // Generic response for security
-      return NextResponse.json({
-        success: true,
-        message: "If an account with this email exists, a password reset code has been sent.",
-        email: cleanEmail,
-      });
+    if (!pending) {
+      return NextResponse.json(
+        { error: "No pending registration found for this email. Please sign up again." },
+        { status: 404 }
+      );
     }
 
-    // Cooldown check on latest OTP
-    const latestOtp = await prisma.otp_verifications.findFirst({
-      where: { email: cleanEmail, purpose: "PASSWORD_RESET", used: false },
-      orderBy: { created_at: "desc" },
-    });
-
-    if (latestOtp && latestOtp.last_resent_at) {
-      const elapsed = Math.floor((Date.now() - new Date(latestOtp.last_resent_at).getTime()) / 1000);
+    // 60-second cooldown
+    if (pending.last_resent_at) {
+      const elapsed = Math.floor((Date.now() - new Date(pending.last_resent_at).getTime()) / 1000);
       if (elapsed < 60) {
         return NextResponse.json(
           { error: `Please wait ${60 - elapsed} seconds before requesting a new OTP` },
@@ -43,21 +35,25 @@ export async function POST(req: Request) {
       }
     }
 
-    // Invalidate existing unused password reset OTPs
-    await prisma.otp_verifications.updateMany({
-      where: { email: cleanEmail, purpose: "PASSWORD_RESET", used: false },
-      data: { used: true },
-    });
-
     const otp = generateOtp();
     const hashedOtp = hashOtp(otp);
     const expiresAt = new Date(Date.now() + 5 * 60 * 1000);
+
+    await prisma.pending_registrations.update({
+      where: { email: cleanEmail },
+      data: {
+        otp_hash: hashedOtp,
+        otp_expires_at: expiresAt,
+        otp_attempts: 0,
+        last_resent_at: new Date(),
+      },
+    });
 
     await prisma.otp_verifications.create({
       data: {
         id: crypto.randomUUID(),
         email: cleanEmail,
-        purpose: "PASSWORD_RESET",
+        purpose: "SIGNUP",
         otp_hash: hashedOtp,
         expires_at: expiresAt,
         attempt_count: 0,
@@ -70,19 +66,19 @@ export async function POST(req: Request) {
     await sendOtpEmail({
       to: cleanEmail,
       otp,
-      purpose: "PASSWORD_RESET",
-      userName: user.name,
+      purpose: "SIGNUP",
+      userName: pending.name,
     });
 
     return NextResponse.json({
       success: true,
-      message: "If an account with this email exists, a password reset code has been sent.",
+      message: "A new verification code has been sent to your email.",
       email: cleanEmail,
     });
   } catch (error: any) {
-    console.error("Forgot password error:", error);
+    console.error("Resend signup OTP error:", error);
     return NextResponse.json(
-      { error: error?.message || "Failed to process password reset" },
+      { error: error?.message || "Failed to resend OTP" },
       { status: 500 }
     );
   }

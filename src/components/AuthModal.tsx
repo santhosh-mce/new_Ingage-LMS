@@ -15,12 +15,18 @@ import {
   ArrowLeft,
   CheckCircle2,
   KeyRound,
+  RefreshCw,
+  Clock,
 } from 'lucide-react';
 import { AuthMode, UserProfile } from '../types';
 import {
   getAuthErrorMessage,
   loginUser,
   signupUser,
+  verifySignupOtp,
+  resendSignupOtp,
+  forgotPassword,
+  verifyForgotPasswordOtp,
   resetPassword,
 } from '../api/authApi';
 import { useAppDispatch } from '../store/hooks';
@@ -29,8 +35,8 @@ import { setCredentials } from '../store/slices/authSlice';
 // ---------------------------------------------------------------------------
 // Step Type Definitions
 // ---------------------------------------------------------------------------
-type SignupStep = 'SIGNUP_FORM' | 'SIGNUP_SUCCESS';
-type LoginStep = 'LOGIN_FORM' | 'FORGOT_PASSWORD' | 'RESET_SUCCESS';
+type SignupStep = 'SIGNUP_FORM' | 'VERIFY_SIGNUP_OTP' | 'SIGNUP_SUCCESS';
+type LoginStep = 'LOGIN_FORM' | 'FORGOT_PASSWORD' | 'VERIFY_RESET_OTP' | 'NEW_PASSWORD' | 'RESET_SUCCESS';
 
 interface AuthModalProps {
   isOpen: boolean;
@@ -49,7 +55,7 @@ export function AuthModal({
 }: AuthModalProps) {
   // Top-level mode: 'signup' stays at /signup, 'login' stays at /login
   const [mode, setMode] = useState<'signup' | 'login'>(() => {
-    return initialMode === 'login' ? 'login' : 'signup';
+    return initialMode === 'login' || initialMode === 'forgot-password' ? 'login' : 'signup';
   });
 
   // State Machines
@@ -65,8 +71,17 @@ export function AuthModal({
   const [rememberMe, setRememberMe] = useState(true);
 
   // Reset Password State
+  const [resetToken, setResetToken] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmNewPassword, setConfirmNewPassword] = useState('');
+
+  // OTP State
+  const [signupOtpDigits, setSignupOtpDigits] = useState(['', '', '', '', '', '']);
+  const [resetOtpDigits, setResetOtpDigits] = useState(['', '', '', '', '', '']);
+  const [otpTimeLeft, setOtpTimeLeft] = useState(300); // 5 minutes
+  const [otpResendCooldown, setOtpResendCooldown] = useState(60); // 60 seconds
+  const [isResendingOtp, setIsResendingOtp] = useState(false);
+  const [isOtpExpired, setIsOtpExpired] = useState(false);
 
   // UI State
   const [showPassword, setShowPassword] = useState(false);
@@ -84,7 +99,10 @@ export function AuthModal({
   // Reset or initialize state when modal opens or initialMode changes
   useEffect(() => {
     if (isOpen) {
-      if (initialMode === 'login') {
+      if (initialMode === 'forgot-password') {
+        setMode('login');
+        setLoginStep('FORGOT_PASSWORD');
+      } else if (initialMode === 'login') {
         setMode('login');
         setLoginStep('LOGIN_FORM');
       } else {
@@ -93,8 +111,40 @@ export function AuthModal({
       }
       setError(null);
       setSuccessBanner(null);
+      setSignupOtpDigits(['', '', '', '', '', '']);
+      setResetOtpDigits(['', '', '', '', '', '']);
+      setResetToken('');
+      setOtpTimeLeft(300);
+      setOtpResendCooldown(0);
+      setIsOtpExpired(false);
     }
   }, [isOpen, initialMode]);
+
+  // 5-minute OTP countdown timer
+  useEffect(() => {
+    if (signupStep !== 'VERIFY_SIGNUP_OTP' && loginStep !== 'VERIFY_RESET_OTP') return;
+
+    const timer = setInterval(() => {
+      setOtpTimeLeft((prev) => {
+        if (prev <= 1) {
+          setIsOtpExpired(true);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, [signupStep, loginStep]);
+
+  // Resend cooldown timer
+  useEffect(() => {
+    if (otpResendCooldown <= 0) return;
+    const timer = setInterval(() => {
+      setOtpResendCooldown((prev) => (prev > 0 ? prev - 1 : 0));
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [otpResendCooldown]);
 
   // Lock body scroll while modal is visible
   useEffect(() => {
@@ -121,6 +171,58 @@ export function AuthModal({
 
   if (!isOpen) return null;
 
+  // Format seconds into MM:SS
+  const formatTime = (seconds: number) => {
+    const m = Math.floor(seconds / 60);
+    const s = seconds % 60;
+    return `${m}:${s < 10 ? '0' : ''}${s}`;
+  };
+
+  // OTP input handlers
+  const handleDigitChange = (
+    digits: string[],
+    setDigits: React.Dispatch<React.SetStateAction<string[]>>,
+    prefix: string,
+    index: number,
+    value: string
+  ) => {
+    const cleanValue = value.replace(/[^0-9]/g, '');
+    if (!cleanValue) {
+      const updated = [...digits];
+      updated[index] = '';
+      setDigits(updated);
+      return;
+    }
+    // If user pasted a 6-digit code
+    if (cleanValue.length === 6) {
+      setDigits(cleanValue.split(''));
+      const lastInput = document.getElementById(`${prefix}-input-5`);
+      lastInput?.focus();
+      return;
+    }
+    const singleChar = cleanValue.slice(-1);
+    const updated = [...digits];
+    updated[index] = singleChar;
+    setDigits(updated);
+
+    if (index < 5 && singleChar) {
+      const nextInput = document.getElementById(`${prefix}-input-${index + 1}`);
+      nextInput?.focus();
+    }
+  };
+
+  const handleKeyDown = (
+    digits: string[],
+    prefix: string,
+    index: number,
+    e: React.KeyboardEvent<HTMLInputElement>
+  ) => {
+    if (e.key === 'Backspace' && !digits[index] && index > 0) {
+      const prevInput = document.getElementById(`${prefix}-input-${index - 1}`);
+      prevInput?.focus();
+    }
+  };
+
   // Password rules validation for Reset Password
   const pwdValidation = {
     length: newPassword.length >= 8,
@@ -131,7 +233,7 @@ export function AuthModal({
   const isResetPasswordValid = Object.values(pwdValidation).every(Boolean);
 
   // ---------------------------------------------------------------------------
-  // 1. SIGNUP: Immediate direct account creation (No OTP)
+  // 1. SIGNUP STEP 1: Validate info and send OTP via SMTP
   // ---------------------------------------------------------------------------
   const handleSignupSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -160,21 +262,65 @@ export function AuthModal({
     }
 
     setIsLoading(true);
-    setLoadingText('Creating your account...');
+    setLoadingText('Sending verification code...');
 
     try {
-      const res: any = await signupUser({
+      const res = await signupUser({
         name: fullName.trim(),
         email: email.trim(),
         password,
       });
 
+      setSignupStep('VERIFY_SIGNUP_OTP');
+      setSignupOtpDigits(['', '', '', '', '', '']);
+      setOtpTimeLeft(300);
+      setOtpResendCooldown(60);
+      setIsOtpExpired(false);
+      setSuccessBanner(res.message || 'Verification code sent to your email.');
+      setTimeout(() => {
+        document.getElementById('signup-otp-input-0')?.focus();
+      }, 100);
+    } catch (err: unknown) {
+      const msg = getAuthErrorMessage(err, 'Unable to start signup. Please try again.');
+      if (msg.toLowerCase().includes('already exists') || msg.toLowerCase().includes('registered')) {
+        setError('An account with this email already exists.');
+      } else {
+        setError(msg);
+      }
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // ---------------------------------------------------------------------------
+  // 1. SIGNUP STEP 2: Verify 6-digit OTP and complete account creation
+  // ---------------------------------------------------------------------------
+  const handleVerifySignupOtpSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    setSuccessBanner(null);
+
+    const otpCode = signupOtpDigits.join('');
+    if (otpCode.length !== 6) {
+      setError('Please enter all 6 digits of your verification code.');
+      return;
+    }
+
+    setIsLoading(true);
+    setLoadingText('Verifying code & activating account...');
+
+    try {
+      const res = await verifySignupOtp({
+        email: email.trim(),
+        otp: otpCode,
+      });
+
       if (res.token) {
         const user: UserProfile = {
-          id: res.userId || res.user?.id || '',
-          name: res.name || res.user?.name || fullName.trim(),
-          email: res.email || res.user?.email || email.trim(),
-          role: res.role || res.user?.role || 'STUDENT',
+          id: res.userId || '',
+          name: res.name || fullName.trim(),
+          email: res.email || email.trim(),
+          role: res.role || 'STUDENT',
           enrolledPaths: [],
         };
 
@@ -188,14 +334,33 @@ export function AuthModal({
         setSignupStep('SIGNUP_SUCCESS');
       }
     } catch (err: unknown) {
-      const msg = getAuthErrorMessage(err, 'Unable to create account. Please try again.');
-      if (msg.toLowerCase().includes('already exists') || msg.toLowerCase().includes('registered')) {
-        setError('An account with this email already exists.');
-      } else {
-        setError(msg);
-      }
+      setError(getAuthErrorMessage(err, 'Invalid or expired verification code. Please try again.'));
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  // ---------------------------------------------------------------------------
+  // 1. SIGNUP RESEND OTP
+  // ---------------------------------------------------------------------------
+  const handleResendSignupOtp = async () => {
+    if (otpResendCooldown > 0 || isResendingOtp) return;
+    setIsResendingOtp(true);
+    setError(null);
+    setSuccessBanner(null);
+
+    try {
+      const res = await resendSignupOtp(email.trim());
+      setOtpTimeLeft(300);
+      setIsOtpExpired(false);
+      setSignupOtpDigits(['', '', '', '', '', '']);
+      setOtpResendCooldown(60);
+      setSuccessBanner(res.message || 'A new verification code has been sent to your email.');
+      document.getElementById('signup-otp-input-0')?.focus();
+    } catch (err: unknown) {
+      setError(getAuthErrorMessage(err, 'Failed to resend code. Please wait before trying again.'));
+    } finally {
+      setIsResendingOtp(false);
     }
   };
 
@@ -246,7 +411,78 @@ export function AuthModal({
   };
 
   // ---------------------------------------------------------------------------
-  // 3. FORGOT PASSWORD: Direct Password Reset (No OTP)
+  // 3. FORGOT PASSWORD STEP 1: Send OTP to registered email
+  // ---------------------------------------------------------------------------
+  const handleForgotPasswordSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    setSuccessBanner(null);
+
+    if (!email || !email.includes('@')) {
+      setError('Please enter a valid email address.');
+      return;
+    }
+
+    setIsLoading(true);
+    setLoadingText('Sending verification code...');
+
+    try {
+      const res = await forgotPassword(email.trim());
+      setLoginStep('VERIFY_RESET_OTP');
+      setResetOtpDigits(['', '', '', '', '', '']);
+      setOtpTimeLeft(300);
+      setOtpResendCooldown(60);
+      setIsOtpExpired(false);
+      setSuccessBanner(res.message || 'If an account exists with this email, a verification code has been sent.');
+      setTimeout(() => {
+        document.getElementById('reset-otp-input-0')?.focus();
+      }, 100);
+    } catch (err: unknown) {
+      setError(getAuthErrorMessage(err, 'Unable to send verification code. Please try again.'));
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // ---------------------------------------------------------------------------
+  // 3. FORGOT PASSWORD STEP 2: Verify OTP and get single-use reset token
+  // ---------------------------------------------------------------------------
+  const handleVerifyResetOtpSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    setSuccessBanner(null);
+
+    const otpCode = resetOtpDigits.join('');
+    if (otpCode.length !== 6) {
+      setError('Please enter all 6 digits of your verification code.');
+      return;
+    }
+
+    setIsLoading(true);
+    setLoadingText('Verifying code...');
+
+    try {
+      const res = await verifyForgotPasswordOtp({
+        email: email.trim(),
+        otp: otpCode,
+      });
+
+      if (res.resetToken) {
+        setResetToken(res.resetToken);
+        setLoginStep('NEW_PASSWORD');
+        setSuccessBanner('Code verified. Please set your new password.');
+      } else {
+        setError('Verification succeeded, but no reset token was returned.');
+      }
+    } catch (err: unknown) {
+      setError(getAuthErrorMessage(err, 'Invalid or expired verification code. Please try again.'));
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // ---------------------------------------------------------------------------
+  // 3. FORGOT PASSWORD STEP 3: Set new password using reset token
   // ---------------------------------------------------------------------------
   const handleResetPasswordSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -274,7 +510,7 @@ export function AuthModal({
     try {
       await resetPassword({
         email: email.trim(),
-        resetToken: 'direct_reset',
+        resetToken: resetToken || 'direct_reset',
         newPassword,
         confirmPassword: confirmNewPassword,
       });
@@ -284,6 +520,7 @@ export function AuthModal({
       setConfirmPassword('');
       setNewPassword('');
       setConfirmNewPassword('');
+      setResetToken('');
       setError(null);
     } catch (err: unknown) {
       setError(getAuthErrorMessage(err, 'Unable to reset password. Please try again.'));
@@ -320,6 +557,12 @@ export function AuthModal({
   // Dynamic Header based on active state
   const getHeaderInfo = () => {
     if (mode === 'signup') {
+      if (signupStep === 'VERIFY_SIGNUP_OTP') {
+        return {
+          title: 'Verify Your Email',
+          subtitle: 'Enter the 6-digit verification code sent to your email',
+        };
+      }
       if (signupStep === 'SIGNUP_SUCCESS') {
         return {
           title: 'Welcome to InGage LMS',
@@ -334,8 +577,18 @@ export function AuthModal({
       switch (loginStep) {
         case 'FORGOT_PASSWORD':
           return {
-            title: 'Reset Your Password',
-            subtitle: 'Enter your email and create a new secure password',
+            title: 'Forgot Password',
+            subtitle: 'Enter your email to receive a verification code',
+          };
+        case 'VERIFY_RESET_OTP':
+          return {
+            title: 'Verify Reset Code',
+            subtitle: 'Enter the 6-digit code sent to your email',
+          };
+        case 'NEW_PASSWORD':
+          return {
+            title: 'Set New Password',
+            subtitle: 'Create a new secure password for your account',
           };
         case 'RESET_SUCCESS':
           return {
@@ -352,64 +605,159 @@ export function AuthModal({
     }
   };
 
-  const { title, subtitle } = getHeaderInfo();
+  const header = getHeaderInfo();
 
   return (
-    <>
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 md:p-8 animate-in fade-in duration-200">
+      {/* Backdrop */}
       <div
-        id="auth-modal-backdrop"
-        className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 bg-black/60 backdrop-blur-xs transition-opacity animate-in fade-in duration-200"
-        onClick={(e) => {
-          if (e.target === e.currentTarget) onClose();
-        }}
+        className="fixed inset-0 bg-gray-950/70 backdrop-blur-sm transition-opacity"
+        onClick={onClose}
+      />
+
+      {/* Dialog Container */}
+      <div
+        className="relative w-full max-w-4xl bg-white rounded-3xl shadow-2xl overflow-hidden border border-gray-100 flex flex-col md:flex-row z-10 max-h-[92vh]"
+        onClick={(e) => e.stopPropagation()}
       >
-        <div
-          id="auth-modal-card"
-          className="relative w-full max-w-[460px] bg-white rounded-2xl shadow-2xl border border-gray-100 overflow-hidden flex flex-col max-h-[92vh] transition-all transform scale-100"
-        >
-          {/* Header */}
-          <div className="pt-6 px-5 sm:px-8 pb-4 flex items-start justify-between gap-3">
-            <div>
-              <h2 id="auth-modal-title" className="text-xl sm:text-2xl font-bold text-gray-900 tracking-tight">
-                {title}
-              </h2>
-              <p id="auth-modal-subtitle" className="text-xs sm:text-sm text-gray-500 mt-1">
-                {subtitle}
-              </p>
+        {/* Left Side: Brand & Visual Context */}
+        <div className="hidden md:flex md:w-5/12 bg-linear-to-br from-lime-900 via-lime-950 to-black p-8 text-white flex-col justify-between relative overflow-hidden">
+          <div className="absolute top-0 right-0 w-64 h-64 bg-lime-500/10 rounded-full blur-3xl -mr-20 -mt-20 pointer-events-none" />
+          <div className="absolute bottom-0 left-0 w-64 h-64 bg-lime-600/10 rounded-full blur-3xl -ml-20 -mb-20 pointer-events-none" />
+
+          {/* Top: Logo & Platform Identity */}
+          <div className="relative z-10">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-2xl bg-linear-to-tr from-lime-500 to-lime-400 flex items-center justify-center text-gray-950 font-black text-xl shadow-lg shadow-lime-500/30">
+                iG
+              </div>
+              <div>
+                <span className="font-extrabold tracking-tight text-xl text-white">InGage</span>
+                <span className="text-lime-400 font-semibold text-xs ml-1.5 px-2 py-0.5 rounded-full bg-lime-950/80 border border-lime-800">
+                  LMS
+                </span>
+              </div>
             </div>
 
+            <div className="mt-12 space-y-4">
+              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/10 backdrop-blur-md text-xs font-semibold text-lime-300 border border-white/10">
+                <Sparkles className="w-3.5 h-3.5 text-lime-400" />
+                <span>Enterprise Learning Ecosystem</span>
+              </div>
+              <h2 className="text-2xl font-bold tracking-tight text-white leading-snug">
+                Master in-demand skills with interactive courses &amp; real-world projects.
+              </h2>
+              <p className="text-sm text-gray-300 leading-relaxed">
+                Join thousands of engineers, designers, and business leaders advancing their careers.
+              </p>
+            </div>
+          </div>
+
+          {/* Value Propositions */}
+          <div className="relative z-10 space-y-3.5 py-6">
+            <div className="flex items-center gap-3 text-sm text-gray-200">
+              <div className="w-6 h-6 rounded-full bg-lime-500/20 text-lime-400 flex items-center justify-center shrink-0">
+                <Check className="w-3.5 h-3.5" />
+              </div>
+              <span>Accredited certificate pathways</span>
+            </div>
+            <div className="flex items-center gap-3 text-sm text-gray-200">
+              <div className="w-6 h-6 rounded-full bg-lime-500/20 text-lime-400 flex items-center justify-center shrink-0">
+                <Check className="w-3.5 h-3.5" />
+              </div>
+              <span>Hands-on sandbox coding labs</span>
+            </div>
+            <div className="flex items-center gap-3 text-sm text-gray-200">
+              <div className="w-6 h-6 rounded-full bg-lime-500/20 text-lime-400 flex items-center justify-center shrink-0">
+                <Check className="w-3.5 h-3.5" />
+              </div>
+              <span>Secure email OTP verification</span>
+            </div>
+          </div>
+
+          {/* Bottom Security Footer */}
+          <div className="relative z-10 pt-4 border-t border-white/10 flex items-center justify-between text-xs text-gray-400">
+            <div className="flex items-center gap-1.5">
+              <ShieldCheck className="w-4 h-4 text-lime-400" />
+              <span>256-bit SSL Encrypted</span>
+            </div>
+            <span>v2.4.0</span>
+          </div>
+        </div>
+
+        {/* Right Side: Form Container */}
+        <div className="w-full md:w-7/12 flex flex-col justify-between bg-white overflow-y-auto max-h-[92vh]">
+          {/* Top Modal Controls */}
+          <div className="p-6 pb-0 flex items-center justify-between">
+            {/* Top Switcher Tabs */}
+            <div className="flex bg-gray-100 p-1 rounded-2xl w-fit">
+              <button
+                type="button"
+                onClick={() => {
+                  setMode('signup');
+                  setSignupStep('SIGNUP_FORM');
+                  setError(null);
+                  setSuccessBanner(null);
+                }}
+                className={`px-4 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                  mode === 'signup'
+                    ? 'bg-white text-gray-900 shadow-xs'
+                    : 'text-gray-500 hover:text-gray-900'
+                }`}
+              >
+                Sign Up
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setMode('login');
+                  setLoginStep('LOGIN_FORM');
+                  setError(null);
+                  setSuccessBanner(null);
+                }}
+                className={`px-4 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                  mode === 'login'
+                    ? 'bg-white text-gray-900 shadow-xs'
+                    : 'text-gray-500 hover:text-gray-900'
+                }`}
+              >
+                Log In
+              </button>
+            </div>
+
+            {/* Close Button */}
             <button
-              id="auth-modal-close-btn"
               onClick={onClose}
-              className="text-gray-400 hover:text-gray-600 p-1.5 rounded-lg hover:bg-gray-100 transition-colors shrink-0 cursor-pointer"
+              className="w-8 h-8 rounded-full bg-gray-100 hover:bg-gray-200 text-gray-500 hover:text-gray-900 flex items-center justify-center transition-colors cursor-pointer"
               aria-label="Close modal"
             >
-              <X className="w-5 h-5" />
+              <X className="w-4 h-4" />
             </button>
           </div>
 
-          <div className="w-full border-b border-gray-100" />
+          <div className="px-6 py-4 md:px-8 space-y-4">
+            {/* Header Content */}
+            <div>
+              <h3 className="text-xl md:text-2xl font-bold tracking-tight text-gray-900">
+                {header.title}
+              </h3>
+              <p className="text-xs md:text-sm text-gray-500 mt-1">
+                {header.subtitle}
+              </p>
+            </div>
 
-          {/* Body Content */}
-          <div className="px-5 sm:px-8 py-5 overflow-y-auto space-y-4 flex-1">
-            {/* Inline Error Banner */}
+            {/* Error Message */}
             {error && (
-              <div
-                id="auth-error-banner"
-                className="p-3.5 rounded-xl bg-red-50 border border-red-200 text-red-700 text-xs sm:text-sm flex items-start gap-2.5 animate-in fade-in duration-200"
-              >
-                <AlertCircle className="w-4 h-4 mt-0.5 shrink-0 text-red-600" />
-                <span className="font-medium leading-relaxed">{error}</span>
+              <div className="p-3 rounded-xl bg-red-50 border border-red-200 text-red-700 text-xs flex items-start gap-2 animate-in fade-in duration-200">
+                <AlertCircle className="w-4 h-4 shrink-0 text-red-600 mt-0.5" />
+                <span>{error}</span>
               </div>
             )}
 
-            {/* Inline Info/Success Banner */}
+            {/* Success Banner */}
             {successBanner && (
-              <div
-                id="auth-success-banner"
-                className="p-3.5 rounded-xl bg-lime-50 border border-lime-200 text-lime-800 text-xs sm:text-sm flex items-center gap-2.5 animate-in fade-in duration-200"
-              >
-                <Check className="w-4 h-4 shrink-0 text-lime-600" />
+              <div className="p-3 rounded-xl bg-lime-50 border border-lime-200 text-lime-800 text-xs flex items-center gap-2 animate-in fade-in duration-200">
+                <CheckCircle2 className="w-4 h-4 shrink-0 text-lime-600" />
                 <span>{successBanner}</span>
               </div>
             )}
@@ -424,7 +772,7 @@ export function AuthModal({
                     {/* Social Auth */}
                     <div className="space-y-3 pt-1">
                       <button
-                        id="social-google-btn"
+                        id="signup-social-google-btn"
                         type="button"
                         onClick={() => handleSocialAuth('Google')}
                         disabled={isLoading}
@@ -452,7 +800,7 @@ export function AuthModal({
                       </button>
 
                       <button
-                        id="social-linkedin-btn"
+                        id="signup-social-linkedin-btn"
                         type="button"
                         onClick={() => handleSocialAuth('LinkedIn')}
                         disabled={isLoading}
@@ -612,7 +960,7 @@ export function AuthModal({
                           </>
                         ) : (
                           <>
-                            <span>Create Account</span>
+                            <span>Continue to Verification</span>
                             <ArrowRight className="w-4 h-4" />
                           </>
                         )}
@@ -621,15 +969,117 @@ export function AuthModal({
                   </>
                 )}
 
+                {/* SIGNUP STEP 2: VERIFY OTP */}
+                {signupStep === 'VERIFY_SIGNUP_OTP' && (
+                  <form onSubmit={handleVerifySignupOtpSubmit} className="space-y-4 pt-1 animate-in fade-in duration-200">
+                    <div className="text-center space-y-1">
+                      <p className="text-xs text-gray-500">
+                        We sent a 6-digit verification code to
+                      </p>
+                      <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-gray-100 rounded-full text-xs font-semibold text-gray-800">
+                        <Mail className="w-3.5 h-3.5 text-gray-500" />
+                        <span>{email}</span>
+                      </div>
+                    </div>
+
+                    {/* Expiration countdown badge */}
+                    <div className="flex items-center justify-center my-2">
+                      {isOtpExpired ? (
+                        <span className="text-xs font-semibold text-red-600 bg-red-50 border border-red-200 px-3 py-1 rounded-full flex items-center gap-1.5">
+                          <AlertCircle className="w-3.5 h-3.5" />
+                          Code expired. Please request a new code.
+                        </span>
+                      ) : (
+                        <span className="text-xs font-medium text-gray-600 bg-gray-100 px-3 py-1 rounded-full flex items-center gap-1">
+                          <Clock className="w-3.5 h-3.5 text-gray-400" />
+                          Code expires in: <strong className="font-mono text-gray-900 ml-1">{formatTime(otpTimeLeft)}</strong>
+                        </span>
+                      )}
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wider mb-2.5 text-center">
+                        Enter 6-Digit Code
+                      </label>
+                      <div className="flex justify-center gap-2">
+                        {signupOtpDigits.map((digit, idx) => (
+                          <input
+                            key={idx}
+                            id={`signup-otp-input-${idx}`}
+                            type="text"
+                            inputMode="numeric"
+                            pattern="[0-9]*"
+                            maxLength={6}
+                            value={digit}
+                            onChange={(e) => handleDigitChange(signupOtpDigits, setSignupOtpDigits, 'signup-otp', idx, e.target.value)}
+                            onKeyDown={(e) => handleKeyDown(signupOtpDigits, 'signup-otp', idx, e)}
+                            disabled={isLoading || isOtpExpired}
+                            className="w-10 sm:w-11 h-12 text-center text-xl font-bold rounded-xl border border-gray-300 focus:border-lime-500 focus:ring-2 focus:ring-lime-100 text-gray-900 outline-none transition-all disabled:bg-gray-100 font-mono shadow-2xs"
+                            autoFocus={idx === 0}
+                          />
+                        ))}
+                      </div>
+                    </div>
+
+                    <button
+                      id="verify-signup-otp-btn"
+                      type="submit"
+                      disabled={isLoading || isOtpExpired || signupOtpDigits.join('').length !== 6}
+                      className="w-full py-3 px-4 rounded-xl bg-lime-600 hover:bg-lime-700 active:bg-lime-800 text-white font-semibold text-sm shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                    >
+                      {isLoading ? (
+                        <>
+                          <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                          <span>{loadingText}</span>
+                        </>
+                      ) : (
+                        <>
+                          <ShieldCheck className="w-4 h-4" />
+                          <span>Verify &amp; Activate Account</span>
+                        </>
+                      )}
+                    </button>
+
+                    <div className="pt-2 border-t border-gray-100 flex items-center justify-between text-xs text-gray-600">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSignupStep('SIGNUP_FORM');
+                          setError(null);
+                        }}
+                        className="text-gray-500 hover:text-gray-800 font-medium inline-flex items-center gap-1 cursor-pointer"
+                      >
+                        <ArrowLeft className="w-3.5 h-3.5" />
+                        <span>Change Email</span>
+                      </button>
+
+                      <button
+                        id="resend-signup-otp-btn"
+                        type="button"
+                        onClick={handleResendSignupOtp}
+                        disabled={isResendingOtp || otpResendCooldown > 0}
+                        className="font-semibold text-lime-700 hover:text-lime-800 hover:underline disabled:opacity-50 cursor-pointer inline-flex items-center gap-1"
+                      >
+                        <RefreshCw className={`w-3.5 h-3.5 ${isResendingOtp ? 'animate-spin' : ''}`} />
+                        {isResendingOtp
+                          ? 'Sending...'
+                          : otpResendCooldown > 0
+                          ? `Resend in ${otpResendCooldown}s`
+                          : 'Resend Code'}
+                      </button>
+                    </div>
+                  </form>
+                )}
+
                 {signupStep === 'SIGNUP_SUCCESS' && (
                   <div className="py-6 text-center space-y-4 animate-in fade-in duration-300">
                     <div className="w-16 h-16 bg-lime-100 text-lime-700 rounded-full flex items-center justify-center mx-auto">
                       <CheckCircle2 className="w-8 h-8" />
                     </div>
                     <div>
-                      <h3 className="text-lg font-bold text-gray-900">Account Created Successfully!</h3>
+                      <h3 className="text-lg font-bold text-gray-900">Account Activated Successfully!</h3>
                       <p className="text-sm text-gray-500 mt-1">
-                        Your account is ready. You can now log in to access all courses and learning paths.
+                        Your email has been verified and your account is ready. You can now log in to start learning.
                       </p>
                     </div>
                     <button
@@ -737,6 +1187,7 @@ export function AuthModal({
                             type="button"
                             onClick={() => {
                               setError(null);
+                              setSuccessBanner(null);
                               setLoginStep('FORGOT_PASSWORD');
                             }}
                             className="text-xs text-lime-700 font-semibold hover:underline cursor-pointer"
@@ -773,9 +1224,9 @@ export function AuthModal({
                             type="checkbox"
                             checked={rememberMe}
                             onChange={(e) => setRememberMe(e.target.checked)}
-                            className="w-4 h-4 text-lime-600 rounded-md border-gray-300 focus:ring-lime-500 cursor-pointer"
+                            className="w-4 h-4 text-lime-600 rounded-md border-gray-300 focus:ring-lime-500"
                           />
-                          <span className="text-xs text-gray-600">Remember this device</span>
+                          <span className="text-xs text-gray-600">Remember me for 30 days</span>
                         </label>
                       </div>
 
@@ -792,7 +1243,7 @@ export function AuthModal({
                           </>
                         ) : (
                           <>
-                            <span>Log In</span>
+                            <span>Log In to Account</span>
                             <ArrowRight className="w-4 h-4" />
                           </>
                         )}
@@ -801,9 +1252,9 @@ export function AuthModal({
                   </>
                 )}
 
-                {/* FORGOT PASSWORD FORM (Direct reset) */}
+                {/* FORGOT PASSWORD STEP 1: Enter Email & Send OTP */}
                 {loginStep === 'FORGOT_PASSWORD' && (
-                  <form onSubmit={handleResetPasswordSubmit} className="space-y-4 pt-1 animate-in fade-in duration-200">
+                  <form onSubmit={handleForgotPasswordSubmit} className="space-y-4 pt-1 animate-in fade-in duration-200">
                     <div>
                       <label className="block text-xs font-semibold text-gray-700 mb-1" htmlFor="forgot-email">
                         Registered Email Address
@@ -822,8 +1273,150 @@ export function AuthModal({
                           placeholder="your.email@example.com"
                         />
                       </div>
+                      <p className="text-xs text-gray-500 mt-1.5">
+                        We'll send a 6-digit verification code to reset your password.
+                      </p>
                     </div>
 
+                    <button
+                      id="forgot-send-otp-btn"
+                      type="submit"
+                      disabled={isLoading}
+                      className="w-full py-3 px-4 rounded-xl bg-lime-600 hover:bg-lime-700 text-white font-semibold text-sm shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                    >
+                      {isLoading ? (
+                        <>
+                          <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                          <span>{loadingText}</span>
+                        </>
+                      ) : (
+                        <>
+                          <span>Send Verification Code</span>
+                          <ArrowRight className="w-4 h-4" />
+                        </>
+                      )}
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setLoginStep('LOGIN_FORM');
+                        setError(null);
+                        setSuccessBanner(null);
+                      }}
+                      className="w-full py-2 text-xs font-semibold text-gray-500 hover:text-gray-700 flex items-center justify-center gap-1.5 cursor-pointer"
+                    >
+                      <ArrowLeft className="w-3.5 h-3.5" />
+                      <span>Back to Log In</span>
+                    </button>
+                  </form>
+                )}
+
+                {/* FORGOT PASSWORD STEP 2: Verify OTP */}
+                {loginStep === 'VERIFY_RESET_OTP' && (
+                  <form onSubmit={handleVerifyResetOtpSubmit} className="space-y-4 pt-1 animate-in fade-in duration-200">
+                    <div className="text-center space-y-1">
+                      <p className="text-xs text-gray-500">
+                        Enter the 6-digit reset code sent to
+                      </p>
+                      <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-gray-100 rounded-full text-xs font-semibold text-gray-800">
+                        <Mail className="w-3.5 h-3.5 text-gray-500" />
+                        <span>{email}</span>
+                      </div>
+                    </div>
+
+                    {/* Expiration countdown badge */}
+                    <div className="flex items-center justify-center my-2">
+                      {isOtpExpired ? (
+                        <span className="text-xs font-semibold text-red-600 bg-red-50 border border-red-200 px-3 py-1 rounded-full flex items-center gap-1.5">
+                          <AlertCircle className="w-3.5 h-3.5" />
+                          Code expired. Please request a new code.
+                        </span>
+                      ) : (
+                        <span className="text-xs font-medium text-gray-600 bg-gray-100 px-3 py-1 rounded-full flex items-center gap-1">
+                          <Clock className="w-3.5 h-3.5 text-gray-400" />
+                          Code expires in: <strong className="font-mono text-gray-900 ml-1">{formatTime(otpTimeLeft)}</strong>
+                        </span>
+                      )}
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wider mb-2.5 text-center">
+                        Enter 6-Digit Code
+                      </label>
+                      <div className="flex justify-center gap-2">
+                        {resetOtpDigits.map((digit, idx) => (
+                          <input
+                            key={idx}
+                            id={`reset-otp-input-${idx}`}
+                            type="text"
+                            inputMode="numeric"
+                            pattern="[0-9]*"
+                            maxLength={6}
+                            value={digit}
+                            onChange={(e) => handleDigitChange(resetOtpDigits, setResetOtpDigits, 'reset-otp', idx, e.target.value)}
+                            onKeyDown={(e) => handleKeyDown(resetOtpDigits, 'reset-otp', idx, e)}
+                            disabled={isLoading || isOtpExpired}
+                            className="w-10 sm:w-11 h-12 text-center text-xl font-bold rounded-xl border border-gray-300 focus:border-lime-500 focus:ring-2 focus:ring-lime-100 text-gray-900 outline-none transition-all disabled:bg-gray-100 font-mono shadow-2xs"
+                            autoFocus={idx === 0}
+                          />
+                        ))}
+                      </div>
+                    </div>
+
+                    <button
+                      id="verify-reset-otp-btn"
+                      type="submit"
+                      disabled={isLoading || isOtpExpired || resetOtpDigits.join('').length !== 6}
+                      className="w-full py-3 px-4 rounded-xl bg-lime-600 hover:bg-lime-700 text-white font-semibold text-sm shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                    >
+                      {isLoading ? (
+                        <>
+                          <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                          <span>{loadingText}</span>
+                        </>
+                      ) : (
+                        <>
+                          <ShieldCheck className="w-4 h-4" />
+                          <span>Verify Code</span>
+                        </>
+                      )}
+                    </button>
+
+                    <div className="pt-2 border-t border-gray-100 flex items-center justify-between text-xs text-gray-600">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setLoginStep('FORGOT_PASSWORD');
+                          setError(null);
+                        }}
+                        className="text-gray-500 hover:text-gray-800 font-medium inline-flex items-center gap-1 cursor-pointer"
+                      >
+                        <ArrowLeft className="w-3.5 h-3.5" />
+                        <span>Change Email</span>
+                      </button>
+
+                      <button
+                        id="resend-reset-otp-btn"
+                        type="button"
+                        onClick={handleForgotPasswordSubmit}
+                        disabled={isLoading || otpResendCooldown > 0}
+                        className="font-semibold text-lime-700 hover:text-lime-800 hover:underline disabled:opacity-50 cursor-pointer inline-flex items-center gap-1"
+                      >
+                        <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} />
+                        {isLoading
+                          ? 'Sending...'
+                          : otpResendCooldown > 0
+                          ? `Resend in ${otpResendCooldown}s`
+                          : 'Resend Code'}
+                      </button>
+                    </div>
+                  </form>
+                )}
+
+                {/* FORGOT PASSWORD STEP 3: Set New Password */}
+                {loginStep === 'NEW_PASSWORD' && (
+                  <form onSubmit={handleResetPasswordSubmit} className="space-y-4 pt-1 animate-in fade-in duration-200">
                     <div>
                       <label className="block text-xs font-semibold text-gray-700 mb-1" htmlFor="new-password">
                         New Password
@@ -878,8 +1471,30 @@ export function AuthModal({
                       </div>
                     </div>
 
+                    {/* Password criteria checklist */}
+                    <div className="p-3 bg-gray-50 rounded-xl space-y-1.5 text-xs text-gray-600">
+                      <div className="flex items-center gap-1.5">
+                        <div className={`w-3.5 h-3.5 rounded-full flex items-center justify-center ${pwdValidation.length ? 'bg-lime-500 text-white' : 'bg-gray-200 text-gray-400'}`}>
+                          <Check className="w-2.5 h-2.5" />
+                        </div>
+                        <span>At least 8 characters</span>
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <div className={`w-3.5 h-3.5 rounded-full flex items-center justify-center ${pwdValidation.hasUpper ? 'bg-lime-500 text-white' : 'bg-gray-200 text-gray-400'}`}>
+                          <Check className="w-2.5 h-2.5" />
+                        </div>
+                        <span>At least 1 uppercase letter</span>
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <div className={`w-3.5 h-3.5 rounded-full flex items-center justify-center ${pwdValidation.hasNumber ? 'bg-lime-500 text-white' : 'bg-gray-200 text-gray-400'}`}>
+                          <Check className="w-2.5 h-2.5" />
+                        </div>
+                        <span>At least 1 number</span>
+                      </div>
+                    </div>
+
                     <button
-                      id="forgot-submit-btn"
+                      id="reset-submit-btn"
                       type="submit"
                       disabled={isLoading}
                       className="w-full py-3 px-4 rounded-xl bg-lime-600 hover:bg-lime-700 text-white font-semibold text-sm shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
@@ -891,19 +1506,10 @@ export function AuthModal({
                         </>
                       ) : (
                         <>
-                          <span>Reset Password</span>
+                          <span>Update Password</span>
                           <ArrowRight className="w-4 h-4" />
                         </>
                       )}
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => setLoginStep('LOGIN_FORM')}
-                      className="w-full py-2 text-xs font-semibold text-gray-500 hover:text-gray-700 flex items-center justify-center gap-1.5 cursor-pointer"
-                    >
-                      <ArrowLeft className="w-3.5 h-3.5" />
-                      <span>Back to Log In</span>
                     </button>
                   </form>
                 )}
@@ -955,44 +1561,64 @@ export function AuthModal({
             </div>
           </div>
 
-          {/* Modal Footer / Switch between Login & Signup */}
-          <div className="p-4 sm:px-8 border-t border-gray-100 bg-gray-50/60 flex items-center justify-center text-xs sm:text-sm text-gray-600">
-            {mode === 'signup' ? (
-              <p>
-                Already have an account?{' '}
-                <button
-                  type="button"
-                  onClick={() => {
-                    setError(null);
-                    setSuccessBanner(null);
-                    setMode('login');
-                    setLoginStep('LOGIN_FORM');
-                  }}
-                  className="text-lime-700 font-bold hover:underline cursor-pointer"
-                >
-                  Log In
-                </button>
-              </p>
-            ) : (
-              <p>
-                Don't have an account?{' '}
-                <button
-                  type="button"
-                  onClick={() => {
-                    setError(null);
-                    setSuccessBanner(null);
-                    setMode('signup');
-                    setSignupStep('SIGNUP_FORM');
-                  }}
-                  className="text-lime-700 font-bold hover:underline cursor-pointer"
-                >
-                  Sign Up
-                </button>
-              </p>
-            )}
+          {/* Bottom Card Footer */}
+          <div className="p-6 pt-3 border-t border-gray-100 bg-gray-50/60 rounded-b-3xl">
+            <p className="text-xs text-center text-gray-500">
+              Need assistance?{' '}
+              <a
+                href="mailto:support@ingagelms.com"
+                className="text-lime-700 font-semibold hover:underline"
+              >
+                Contact Academic Support
+              </a>
+            </p>
           </div>
         </div>
       </div>
-    </>
+
+      {/* Terms and Privacy Modal */}
+      {showTermsModal && (
+        <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-gray-950/80 backdrop-blur-xs">
+          <div className="bg-white rounded-2xl max-w-lg w-full p-6 space-y-4 max-h-[80vh] overflow-y-auto">
+            <div className="flex items-center justify-between border-b pb-3">
+              <h4 className="font-bold text-gray-900">InGage LMS Terms &amp; Privacy</h4>
+              <button
+                type="button"
+                onClick={() => setShowTermsModal(false)}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="text-xs text-gray-600 space-y-3 leading-relaxed">
+              <p>
+                Welcome to InGage LMS. By creating an account or using our platform, you agree to
+                comply with all learning integrity standards and platform acceptable use guidelines.
+              </p>
+              <p>
+                <strong>Account Security:</strong> You are responsible for safeguarding your login
+                credentials. InGage LMS employs 6-digit OTP verification and industry-standard encryption.
+              </p>
+              <p>
+                <strong>Academic Integrity:</strong> Course completion certificates are awarded based
+                on authentic assessment results. Sharing solutions or plagiarizing project work may
+                result in credential revocation.
+              </p>
+            </div>
+            <div className="pt-2 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setShowTermsModal(false)}
+                className="px-4 py-2 bg-lime-600 hover:bg-lime-700 text-white rounded-xl text-xs font-semibold"
+              >
+                I Understand
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
+
+export default AuthModal;
