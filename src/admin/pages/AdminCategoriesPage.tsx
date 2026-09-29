@@ -244,13 +244,34 @@ export const AdminCategoriesPage: React.FC<AdminCategoriesPageProps> = ({
     }
   };
 
+    // Client-side Instant Filtered Categories
+  const filteredCategories = useMemo(() => {
+    return categories.filter((c) => {
+      if (searchQuery.trim()) {
+        const q = searchQuery.toLowerCase().trim();
+        const matchesName = (c.name || '').toLowerCase().includes(q);
+        const matchesSlug = (c.slug || '').toLowerCase().includes(q);
+        const matchesDesc = (c.description || '').toLowerCase().includes(q);
+        if (!matchesName && !matchesSlug && !matchesDesc) return false;
+      }
+      if (statusFilter === 'ACTIVE' && !c.active) return false;
+      if (statusFilter === 'INACTIVE' && c.active) return false;
+      return true;
+    });
+  }, [categories, searchQuery, statusFilter]);
+
+  // Reset to page 1 on search or filter change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery, statusFilter]);
+
   // Pagination logic
-  const totalItems = categories.length;
+  const totalItems = filteredCategories.length;
   const totalPages = Math.ceil(totalItems / pageSize) || 1;
   const paginatedCategories = useMemo(() => {
     const start = (currentPage - 1) * pageSize;
-    return categories.slice(start, start + pageSize);
-  }, [categories, currentPage, pageSize]);
+    return filteredCategories.slice(start, start + pageSize);
+  }, [filteredCategories, currentPage, pageSize]);
 
   return (
     <div className="space-y-6">

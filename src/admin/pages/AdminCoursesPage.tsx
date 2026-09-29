@@ -1,5 +1,5 @@
 "use client";
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   getAdminCourses,
   publishAdminCourse,
@@ -112,6 +112,29 @@ export const AdminCoursesPage: React.FC<AdminCoursesPageProps> = ({
       if (onShowToast) onShowToast('Failed to delete course.');
     }
   };
+  // Client-side Instant Filtered Courses
+  const filteredCourses = useMemo(() => {
+    return courses.filter((c) => {
+      if (searchQuery.trim()) {
+        const q = searchQuery.toLowerCase().trim();
+        const matchesTitle = (c.title || '').toLowerCase().includes(q);
+        const matchesCat = (c.category || '').toLowerCase().includes(q);
+        const matchesInstructor = (c.instructor || '').toLowerCase().includes(q);
+        if (!matchesTitle && !matchesCat && !matchesInstructor) return false;
+      }
+      if (categoryFilter !== 'ALL') {
+        if ((c.category || '').toLowerCase() !== categoryFilter.toLowerCase()) return false;
+      }
+      if (statusFilter !== 'ALL') {
+        const st = (c.status || (c.published ? 'PUBLISHED' : 'DRAFT')).toUpperCase();
+        if (statusFilter === 'PUBLISHED' && !c.published && st !== 'PUBLISHED') return false;
+        if (statusFilter === 'DRAFT' && (c.published || st !== 'DRAFT')) return false;
+        if (statusFilter === 'UNPUBLISHED' && c.published) return false;
+        if (statusFilter === 'ARCHIVED' && st !== 'ARCHIVED') return false;
+      }
+      return true;
+    });
+  }, [courses, searchQuery, categoryFilter, statusFilter]);
 
   return (
     <div className="space-y-6 pb-16">
@@ -142,7 +165,7 @@ export const AdminCoursesPage: React.FC<AdminCoursesPageProps> = ({
             className="flex items-center gap-2 px-4 py-2.5 bg-green-600 hover:bg-green-700 text-white font-semibold text-sm rounded-xl transition-all shadow-xs cursor-pointer"
           >
             <Plus className="w-4 h-4" />
-            <span>+ Add Course</span>
+            <span>Add Course</span>
           </button>
         </div>
       </div>
@@ -216,7 +239,7 @@ export const AdminCoursesPage: React.FC<AdminCoursesPageProps> = ({
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 text-slate-700">
-              {loading && courses.length === 0 ? (
+              {loading && filteredCourses.length === 0 ? (
                 <tr>
                   <td colSpan={10} className="px-4 py-12 text-center text-slate-400">
                     <RefreshCw className="w-6 h-6 animate-spin mx-auto text-green-600 mb-2" />
@@ -230,7 +253,7 @@ export const AdminCoursesPage: React.FC<AdminCoursesPageProps> = ({
                   </td>
                 </tr>
               ) : (
-                courses.map((c) => (
+                filteredCourses.map((c) => (
                   <tr key={c.id} className="hover:bg-slate-50/80 transition-colors">
                     <td className="px-5 py-3.5 font-semibold text-slate-900 max-w-[200px]">
                       <div className="flex items-center gap-2.5">

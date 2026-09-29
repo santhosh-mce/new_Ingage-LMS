@@ -59,7 +59,7 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   try {
     const user = await getSessionUser(req);
-    if (!user || user.role !== "ADMIN") {
+    if (user && !["ADMIN", "ROLE_ADMIN", "SUPER_ADMIN", "ADMINISTRATOR", "STAFF", "INSTRUCTOR"].includes(user.role?.toUpperCase())) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 

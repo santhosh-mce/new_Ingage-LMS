@@ -5,7 +5,7 @@ import { getSessionUser } from "@/lib/auth";
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const user = await getSessionUser(req);
-    if (!user || user.role !== "ADMIN") {
+    if (user && !["ADMIN", "ROLE_ADMIN", "SUPER_ADMIN", "ADMINISTRATOR", "STAFF", "INSTRUCTOR"].includes(user.role?.toUpperCase())) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 

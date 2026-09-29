@@ -145,37 +145,45 @@ export const AdminUsersPage: React.FC<AdminUsersPageProps> = ({
     setStatsLoading(true);
     try {
       const [userData, statsData] = await Promise.all([
-        getAdminUsers(searchQuery),
+        getAdminUsers(),
         getAdminUserStats().catch(() => null),
       ]);
 
       const userList = Array.isArray(userData) ? userData : [];
       setUsers(userList);
 
-      if (statsData) {
-        setStats(statsData);
+      // Compute stats reliably from backend or compute from full user list
+      let finalStats: UserStats;
+      if (statsData && typeof statsData.totalUsers === 'number' && statsData.totalUsers > 0) {
+        finalStats = {
+          totalUsers: statsData.totalUsers,
+          activeUsers: statsData.activeUsers ?? 0,
+          inactiveUsers: statsData.inactiveUsers ?? 0,
+          verifiedUsers: statsData.verifiedUsers ?? 0,
+          unverifiedUsers: statsData.unverifiedUsers ?? 0,
+          instructors: statsData.instructors ?? 0,
+          administrators: statsData.administrators ?? statsData.admins ?? 0,
+          learners: statsData.learners ?? 0,
+        };
       } else {
-        // Fallback calculations if stats endpoint fails
         const total = userList.length;
-        const active = userList.filter((u) => u.active !== false).length;
-        const verified = userList.filter((u) => u.emailVerified === true).length;
+        const active = userList.filter((u) => u.active !== false && u.status !== 'INACTIVE').length;
+        const verified = userList.filter((u) => u.emailVerified === true || u.email_verified === true).length;
         const instructors = userList.filter((u) => (u.role || '').toUpperCase() === 'INSTRUCTOR').length;
-        const admins = userList.filter((u) => (u.role || '').toUpperCase() === 'ADMIN').length;
-        const learners = userList.filter((u) => {
-          const r = (u.role || '').toUpperCase();
-          return r === 'LEARNER' || r === 'STUDENT';
-        }).length;
-        setStats({
+        const admins = userList.filter((u) => ['ADMIN', 'ADMINISTRATOR', 'ROLE_ADMIN', 'SUPER_ADMIN'].includes((u.role || '').toUpperCase())).length;
+        const learners = userList.filter((u) => ['LEARNER', 'STUDENT'].includes((u.role || '').toUpperCase())).length;
+        finalStats = {
           totalUsers: total,
           activeUsers: active,
-          inactiveUsers: total - active,
+          inactiveUsers: Math.max(0, total - active),
           verifiedUsers: verified,
-          unverifiedUsers: total - verified,
+          unverifiedUsers: Math.max(0, total - verified),
           instructors,
           administrators: admins,
           learners,
-        });
+        };
       }
+      setStats(finalStats);
     } catch (err) {
       console.error('Failed to load users:', err);
       showToast('Failed to load user directory. Please try again.', 'error');
@@ -192,35 +200,50 @@ export const AdminUsersPage: React.FC<AdminUsersPageProps> = ({
   // Filtered Users List
   const filteredUsers = useMemo(() => {
     return users.filter((u) => {
+      // Instant Search Filter
+      if (searchQuery.trim()) {
+        const q = searchQuery.toLowerCase().trim();
+        const matchesName = (u.name || '').toLowerCase().includes(q);
+        const matchesEmail = (u.email || '').toLowerCase().includes(q);
+        const matchesPhone = (u.phone || '').toLowerCase().includes(q);
+        if (!matchesName && !matchesEmail && !matchesPhone) {
+          return false;
+        }
+      }
+
       // Role Filter
       if (roleFilter !== 'ALL') {
         const userRole = (u.role || '').toUpperCase();
-        if (roleFilter === 'LEARNER' && userRole !== 'LEARNER' && userRole !== 'STUDENT') {
-          return false;
-        } else if (roleFilter !== 'LEARNER' && userRole !== roleFilter) {
+        if (roleFilter === 'LEARNER') {
+          if (userRole !== 'LEARNER' && userRole !== 'STUDENT') return false;
+        } else if (roleFilter === 'ADMIN') {
+          if (!['ADMIN', 'ADMINISTRATOR', 'ROLE_ADMIN', 'SUPER_ADMIN'].includes(userRole)) return false;
+        } else if (userRole !== roleFilter) {
           return false;
         }
       }
 
       // Verification Filter
-      if (verificationFilter === 'VERIFIED' && !u.emailVerified) {
+      const isEmailVerified = u.emailVerified === true || u.email_verified === true;
+      if (verificationFilter === 'VERIFIED' && !isEmailVerified) {
         return false;
       }
-      if (verificationFilter === 'UNVERIFIED' && u.emailVerified) {
+      if (verificationFilter === 'UNVERIFIED' && isEmailVerified) {
         return false;
       }
 
       // Account Status Filter
-      if (statusFilter === 'ACTIVE' && u.active === false) {
+      const isActive = u.active !== false && u.status !== 'INACTIVE';
+      if (statusFilter === 'ACTIVE' && !isActive) {
         return false;
       }
-      if (statusFilter === 'INACTIVE' && u.active !== false) {
+      if (statusFilter === 'INACTIVE' && isActive) {
         return false;
       }
 
       return true;
     });
-  }, [users, roleFilter, verificationFilter, statusFilter]);
+  }, [users, searchQuery, roleFilter, verificationFilter, statusFilter]);
 
   // Reset to page 1 on filter or search change
   useEffect(() => {
@@ -245,6 +268,7 @@ export const AdminUsersPage: React.FC<AdminUsersPageProps> = ({
     setRoleFilter('ALL');
     setVerificationFilter('ALL');
     setStatusFilter('ALL');
+    setCurrentPage(1);
   };
 
   // Helper to check if a user is the currently logged-in admin

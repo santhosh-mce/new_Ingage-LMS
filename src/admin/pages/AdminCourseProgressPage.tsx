@@ -1,5 +1,5 @@
 "use client";
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { getAdminProgress } from '../../api/adminApi';
 import {
   GraduationCap,
@@ -49,6 +49,27 @@ export const AdminCourseProgressPage: React.FC<{ onNavigate: (path: string) => v
       return '—';
     }
   };
+  // Client-side Instant Filtered Progress List
+  const filteredProgress = useMemo(() => {
+    return progressList.filter((p) => {
+      if (search.trim()) {
+        const q = search.toLowerCase().trim();
+        const matchesUser = (p.userName || '').toLowerCase().includes(q);
+        const matchesEmail = (p.userEmail || '').toLowerCase().includes(q);
+        const matchesCourse = (p.courseTitle || '').toLowerCase().includes(q);
+        const matchesCert = (p.certificateNumber || '').toLowerCase().includes(q);
+        if (!matchesUser && !matchesEmail && !matchesCourse && !matchesCert) return false;
+      }
+      const progressVal = Number(p.progress ?? p.progressPercentage ?? 0);
+      const isCompleted = p.status === 'COMPLETED' || progressVal >= 100 || !!p.completionDate;
+      if (statusFilter === 'IN_PROGRESS' || statusFilter === 'IN PROGRESS') {
+        if (isCompleted) return false;
+      } else if (statusFilter === 'COMPLETED') {
+        if (!isCompleted) return false;
+      }
+      return true;
+    });
+  }, [progressList, search, statusFilter]);
 
   return (
     <div className="space-y-6">
@@ -128,7 +149,7 @@ export const AdminCourseProgressPage: React.FC<{ onNavigate: (path: string) => v
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 text-slate-700">
-              {loading && progressList.length === 0 ? (
+              {loading && filteredProgress.length === 0 ? (
                 <tr>
                   <td colSpan={9} className="px-4 py-16 text-center text-slate-400">
                     <RefreshCw className="w-6 h-6 animate-spin mx-auto text-green-600 mb-2" />
@@ -142,7 +163,7 @@ export const AdminCourseProgressPage: React.FC<{ onNavigate: (path: string) => v
                   </td>
                 </tr>
               ) : (
-                progressList.map((p) => {
+                filteredProgress.map((p) => {
                   const progressVal = Number(p.progress ?? p.progressPercentage ?? 0);
                   const isCompleted = p.status === 'COMPLETED' || progressVal >= 100 || !!p.completionDate;
 

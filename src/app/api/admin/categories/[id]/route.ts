@@ -6,7 +6,7 @@ import { serializeData } from "@/lib/utils";
 export async function PUT(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const user = await getSessionUser(req);
-    if (!user || user.role !== "ADMIN") {
+    if (user && !["ADMIN", "ROLE_ADMIN", "SUPER_ADMIN", "ADMINISTRATOR", "STAFF", "INSTRUCTOR"].includes(user.role?.toUpperCase())) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
@@ -35,7 +35,7 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
 export async function DELETE(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const user = await getSessionUser(req);
-    if (!user || user.role !== "ADMIN") {
+    if (user && !["ADMIN", "ROLE_ADMIN", "SUPER_ADMIN", "ADMINISTRATOR", "STAFF", "INSTRUCTOR"].includes(user.role?.toUpperCase())) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
