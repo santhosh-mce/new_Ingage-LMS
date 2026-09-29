@@ -1,0 +1,899 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model admin_activity_logs {
+  id          BigInt   @id @default(autoincrement())
+  action      String   @db.VarChar(100)
+  admin_email String   @db.VarChar(255)
+  admin_id    String?  @db.Uuid
+  created_at  DateTime @db.Timestamptz(6)
+  details     String?
+  entity_id   String?  @db.VarChar(100)
+  entity_type String?  @db.VarChar(100)
+  ip_address  String?  @db.VarChar(100)
+}
+
+model career_courses {
+  id                      BigInt   @id @default(autoincrement())
+  display_order           Int
+  career_id               BigInt
+  course_id               BigInt
+  included                Boolean? @default(true)
+  required_for_completion Boolean? @default(true)
+  courses                 courses  @relation(fields: [course_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk5ow84nx05bb8j4sysuqfaq2l6")
+  careers                 careers  @relation(fields: [career_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fkijhpf2i5e8xh5ox0gmnn5l9ok")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model career_enrollments {
+  id                  BigInt    @id @default(autoincrement())
+  completed_at        DateTime? @db.Timestamptz(6)
+  enrolled_at         DateTime  @db.Timestamptz(6)
+  last_accessed_at    DateTime? @db.Timestamptz(6)
+  progress_percentage Int
+  status              String    @db.VarChar(30)
+  career_id           BigInt
+  user_id             String    @db.Uuid
+  careers             careers   @relation(fields: [career_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fkcpbdkud7r1s0dot1nc4ym5uge")
+  users               users     @relation(fields: [user_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fkprxisedyvejdbtkq3fuqgv0sq")
+
+  @@unique([user_id, career_id], map: "ukicxdiq0yc4ospuq3xsj9mo8cp")
+}
+
+model career_opportunities {
+  id            BigInt   @id @default(autoincrement())
+  company       String?  @db.VarChar(255)
+  created_at    DateTime @db.Timestamptz(6)
+  display_order Int
+  location      String?  @db.VarChar(255)
+  salary        String?  @db.VarChar(100)
+  title         String   @db.VarChar(255)
+  type          String?  @db.VarChar(50)
+  career_id     BigInt
+  careers       careers  @relation(fields: [career_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fkgde4n3n6u0trud6b4jf3vhrrh")
+}
+
+model career_projects {
+  id            BigInt   @id @default(autoincrement())
+  created_at    DateTime @db.Timestamptz(6)
+  description   String?
+  difficulty    String?  @db.VarChar(50)
+  display_order Int
+  technologies  String?  @db.VarChar(255)
+  title         String   @db.VarChar(255)
+  career_id     BigInt
+  careers       careers  @relation(fields: [career_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fklthbc0ybcjngtupg2qatxq63t")
+}
+
+model career_responsibilities {
+  id             BigInt   @id @default(autoincrement())
+  created_at     DateTime @db.Timestamptz(6)
+  display_order  Int
+  responsibility String   @db.VarChar(500)
+  career_id      BigInt
+  careers        careers  @relation(fields: [career_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fkptehy61ioom078ahbgs0qrrbl")
+}
+
+model career_roadmaps {
+  id            BigInt   @id @default(autoincrement())
+  created_at    DateTime @db.Timestamptz(6)
+  description   String?
+  display_order Int
+  duration      String?  @db.VarChar(100)
+  title         String   @db.VarChar(255)
+  career_id     BigInt
+  careers       careers  @relation(fields: [career_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk5shu9rgmr5v2pq6i8a7sud1ha")
+}
+
+model career_skills {
+  id            BigInt   @id @default(autoincrement())
+  created_at    DateTime @db.Timestamptz(6)
+  display_order Int
+  skill_name    String   @db.VarChar(150)
+  skill_type    String   @db.VarChar(50)
+  career_id     BigInt
+  careers       careers  @relation(fields: [career_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fkrrtrtntxvp9tceenek6kgeeen")
+}
+
+model careers {
+  id                      BigInt                    @id @default(autoincrement())
+  active                  Boolean
+  category                String                    @db.VarChar(100)
+  certification_name      String?                   @db.VarChar(255)
+  created_at              DateTime                  @db.Timestamptz(6)
+  description             String
+  display_order           Int
+  duration                String                    @db.VarChar(50)
+  featured                Boolean
+  icon                    String?                   @db.VarChar(100)
+  image_url               String?                   @db.VarChar(1000)
+  job_openings            String?                   @db.VarChar(50)
+  level                   String                    @db.VarChar(50)
+  modules_count           Int?
+  popular                 Boolean
+  published               Boolean
+  salary_currency         String                    @db.VarChar(10)
+  salary_max              BigInt
+  salary_min              BigInt
+  short_description       String?                   @db.VarChar(500)
+  slug                    String                    @unique(map: "idx_careers_slug") @db.VarChar(255)
+  title                   String                    @db.VarChar(255)
+  updated_at              DateTime?                 @db.Timestamptz(6)
+  discount_percent        Int?
+  original_price          Float?
+  price                   Float?
+  career_courses          career_courses[]
+  career_enrollments      career_enrollments[]
+  career_opportunities    career_opportunities[]
+  career_projects         career_projects[]
+  career_responsibilities career_responsibilities[]
+  career_roadmaps         career_roadmaps[]
+  career_skills           career_skills[]
+  certificates            certificates[]
+  orders                  orders[]
+  payments                payments[]
+
+  @@index([active], map: "idx_careers_active")
+  @@index([category], map: "idx_careers_category")
+  @@index([featured], map: "idx_careers_featured")
+  @@index([level], map: "idx_careers_level")
+  @@index([published], map: "idx_careers_published")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model certificates {
+  id                 BigInt    @id @default(autoincrement())
+  certificate_number String    @unique(map: "ukfipjgqr5997w3i89i4mfyng9f") @db.VarChar(100)
+  certificate_url    String?   @db.VarChar(1000)
+  created_at         DateTime  @db.Timestamptz(6)
+  issued_at          DateTime  @db.Timestamptz(6)
+  pdf_path           String?   @db.VarChar(1000)
+  status             String    @db.VarChar(30)
+  verification_code  String    @unique(map: "ukksm6qgavh6pvt85iph4b9r2ms") @db.VarChar(100)
+  course_id          BigInt?
+  user_id            String    @db.Uuid
+  completion_date    DateTime? @db.Timestamptz(6)
+  course_name        String?   @db.VarChar(255)
+  instructor_name    String?   @db.VarChar(255)
+  student_name       String?   @db.VarChar(255)
+  certificate_type   String?   @db.VarChar(30)
+  career_id          BigInt?
+  careers            careers?  @relation(fields: [career_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk9yb3aaajjjn3kuh76rybvvm6q")
+  users              users     @relation(fields: [user_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fkd3f6enpb3p3xovee9klklf05r")
+  courses            courses?  @relation(fields: [course_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fks5rftqrsgkog7h4piv3f7a9s6")
+
+  @@unique([user_id, course_id], map: "uki1uki0pqbx17xxvpwf1ocq0e")
+}
+
+model course_categories {
+  id            BigInt    @id @default(autoincrement())
+  created_at    DateTime  @db.Timestamptz(6)
+  description   String?
+  display_order Int
+  name          String    @unique(map: "uknxksnnnkvgo1vca6ffhyfrpux") @db.VarChar(100)
+  slug          String    @unique(map: "uk2lc9hosqwmkpn1uiqu4iw8has") @db.VarChar(120)
+  updated_at    DateTime? @db.Timestamptz(6)
+  active        Boolean?  @default(true)
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model course_lessons {
+  id               BigInt            @id @default(autoincrement())
+  content_url      String?
+  created_at       DateTime          @db.Timestamptz(6)
+  description      String?
+  display_order    Int
+  duration         String?           @db.VarChar(50)
+  duration_seconds Int?
+  file_size        BigInt?
+  free_preview     Boolean
+  lesson_type      String            @db.VarChar(30)
+  required         Boolean
+  title            String            @db.VarChar(255)
+  updated_at       DateTime?         @db.Timestamptz(6)
+  section_id       BigInt
+  video_key        String?           @db.VarChar(255)
+  course_sections  course_sections   @relation(fields: [section_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk7fiyd3ed4l0t0c44oqpmb952r")
+  lesson_progress  lesson_progress[]
+  quiz_questions   quiz_questions[]
+}
+
+model course_sections {
+  id             BigInt           @id @default(autoincrement())
+  created_at     DateTime         @db.Timestamptz(6)
+  description    String?
+  display_order  Int
+  title          String           @db.VarChar(255)
+  updated_at     DateTime?        @db.Timestamptz(6)
+  course_id      BigInt
+  course_lessons course_lessons[]
+  courses        courses          @relation(fields: [course_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk4xiaseygl0aodt5ahkbm8s2ds")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model courses {
+  id                BigInt            @id @default(autoincrement())
+  banner            String?           @db.VarChar(1000)
+  category          String?           @db.VarChar(100)
+  created_at        DateTime          @db.Timestamptz(6)
+  currency          String?           @db.VarChar(10)
+  description       String?
+  discount_type     String?           @db.VarChar(30)
+  discount_value    Float?
+  duration          String?           @db.VarChar(50)
+  final_price       Float?
+  instructor        String?           @db.VarChar(150)
+  language          String?           @db.VarChar(50)
+  level             String?           @db.VarChar(50)
+  price             Int
+  published         Boolean
+  short_description String?
+  slug              String?           @db.VarChar(255)
+  status            String?           @db.VarChar(30)
+  thumbnail         String?           @db.VarChar(1000)
+  title             String            @db.VarChar(255)
+  updated_at        DateTime?         @db.Timestamptz(6)
+  career_courses    career_courses[]
+  certificates      certificates[]
+  course_sections   course_sections[]
+  enrollments       enrollments[]
+  orders            orders[]
+  payments          payments[]
+}
+
+/// The underlying table does not contain a valid unique identifier and can therefore currently not be handled by Prisma Client.
+model credential_course_outcomes {
+  course_id          BigInt
+  outcome            String?
+  credential_courses credential_courses @relation(fields: [course_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fker5x6b81cc9729isx9qxwv0f9")
+
+  @@ignore
+}
+
+/// The underlying table does not contain a valid unique identifier and can therefore currently not be handled by Prisma Client.
+model credential_course_prerequisites {
+  course_id          BigInt
+  prerequisite       String?            @db.VarChar(500)
+  credential_courses credential_courses @relation(fields: [course_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fkjpg8afubxmf3th6j1btbwji8i")
+
+  @@ignore
+}
+
+model credential_courses {
+  id                              BigInt                            @id @default(autoincrement())
+  career_slug                     String?                           @db.VarChar(100)
+  category                        String                            @db.VarChar(100)
+  created_at                      DateTime                          @db.Timestamptz(6)
+  credential_name                 String?                           @db.VarChar(255)
+  credential_type                 String?                           @db.VarChar(100)
+  credential_url                  String?                           @db.VarChar(1000)
+  description                     String?
+  discount                        Float?
+  duration                        String?                           @db.VarChar(100)
+  featured                        Boolean
+  is_free                         Boolean
+  learners_count                  Int?
+  level                           String?                           @db.VarChar(50)
+  price                           Float
+  provider                        String                            @db.VarChar(100)
+  published                       Boolean
+  rating                          Float?
+  short_description               String?
+  slug                            String                            @unique(map: "ukfrlprybs0qqg1qc7rrgev14bn") @db.VarChar(255)
+  thumbnail                       String?                           @db.VarChar(1000)
+  title                           String                            @db.VarChar(255)
+  updated_at                      DateTime?                         @db.Timestamptz(6)
+  release_mode                    String?                           @db.VarChar(50)
+  total_skills                    Int?
+  credential_course_outcomes      credential_course_outcomes[]      @ignore
+  credential_course_prerequisites credential_course_prerequisites[] @ignore
+  credential_enrollments          credential_enrollments[]
+  credential_modules              credential_modules[]
+}
+
+model credential_enrollments {
+  id                      BigInt             @id @default(autoincrement())
+  completed_at            DateTime?          @db.Timestamptz(6)
+  completed_modules_count Int
+  credential_id           String?            @db.VarChar(100)
+  credential_url          String?            @db.VarChar(1000)
+  enrolled_at             DateTime           @db.Timestamptz(6)
+  last_accessed_at        DateTime?          @db.Timestamptz(6)
+  progress_percentage     Int
+  status                  String             @db.VarChar(50)
+  credential_course_id    BigInt
+  user_id                 String             @db.Uuid
+  users                   users              @relation(fields: [user_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fkbfcbpy4h7nwtgbqm28p26ev8g")
+  credential_courses      credential_courses @relation(fields: [credential_course_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fkp30dvklxdrb5pjigrk5ahi0nw")
+
+  @@unique([user_id, credential_course_id], map: "uk17akw9siqmoaa8rtji6dvl605")
+}
+
+model credential_modules {
+  id                   BigInt              @id @default(autoincrement())
+  description          String?
+  duration             String?             @db.VarChar(50)
+  order_index          Int
+  title                String              @db.VarChar(255)
+  credential_course_id BigInt
+  credential_courses   credential_courses  @relation(fields: [credential_course_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fki3w6nehom4mup7ud8adb1orlw")
+  credential_skills    credential_skills[]
+}
+
+/// The underlying table does not contain a valid unique identifier and can therefore currently not be handled by Prisma Client.
+model credential_skill_objectives {
+  skill_id          BigInt
+  objective         String?           @db.VarChar(500)
+  credential_skills credential_skills @relation(fields: [skill_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fkfa37ijpvyh3mv9hc3rbu00iqw")
+
+  @@ignore
+}
+
+/// The underlying table does not contain a valid unique identifier and can therefore currently not be handled by Prisma Client.
+model credential_skill_topics {
+  skill_id          BigInt
+  topic             String?           @db.VarChar(255)
+  credential_skills credential_skills @relation(fields: [skill_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fkn35pxys306qd5nhqfypkfo58w")
+
+  @@ignore
+}
+
+model credential_skills {
+  id                          BigInt                        @id @default(autoincrement())
+  is_active                   Boolean
+  badge_description           String?
+  badge_name                  String?                       @db.VarChar(255)
+  case_study                  String?
+  description                 String?
+  duration                    String?                       @db.VarChar(50)
+  practical_exercise          String?
+  quiz_questions_json         String?
+  reading_content             String?
+  is_required                 Boolean
+  skill_order                 Int
+  slug                        String                        @unique(map: "ukc291uh3iyq7yu1pfu1vxo5xsa") @db.VarChar(255)
+  title                       String                        @db.VarChar(255)
+  video_duration              String?                       @db.VarChar(50)
+  video_url                   String?                       @db.VarChar(1000)
+  week_number                 Int
+  credential_module_id        BigInt
+  credential_skill_objectives credential_skill_objectives[] @ignore
+  credential_skill_topics     credential_skill_topics[]     @ignore
+  credential_modules          credential_modules            @relation(fields: [credential_module_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fkp7i6013td1so5pc35tv10mikb")
+  skill_badges                skill_badges[]
+  student_skill_progress      student_skill_progress[]
+
+  @@index([slug], map: "idx_cred_skill_slug")
+  @@index([week_number], map: "idx_cred_skill_week")
+}
+
+model discount_usages {
+  id              BigInt    @id @default(autoincrement())
+  discount_amount Float
+  used_at         DateTime  @db.Timestamptz(6)
+  discount_id     BigInt
+  order_id        BigInt?
+  user_id         String    @db.Uuid
+  orders          orders?   @relation(fields: [order_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk43s7fdx3e2goo1pmsq2lv5slp")
+  discounts       discounts @relation(fields: [discount_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk71pnx68r0ufn6akv7646hiyia")
+  users           users     @relation(fields: [user_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fkdpg4qtxvfounarvefw174nai5")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model discounts {
+  id                  BigInt            @id @default(autoincrement())
+  active              Boolean
+  coupon_code         String            @unique(map: "ukdo2rqbjkid5sqbt2ht21p25vx") @db.VarChar(50)
+  created_at          DateTime          @db.Timestamptz(6)
+  discount_type       String            @db.VarChar(30)
+  discount_value      Float
+  end_date            DateTime?         @db.Timestamptz(6)
+  max_discount        Float?
+  min_purchase_amount Float?
+  per_user_limit      Int?
+  start_date          DateTime?         @db.Timestamptz(6)
+  updated_at          DateTime?         @db.Timestamptz(6)
+  usage_limit         Int?
+  used_count          Int
+  discount_usages     discount_usages[]
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model enrollments {
+  id                  BigInt            @id @default(autoincrement())
+  completed_at        DateTime?         @db.Timestamptz(6)
+  enrolled_at         DateTime          @db.Timestamptz(6)
+  last_accessed_at    DateTime?         @db.Timestamptz(6)
+  progress_percentage Int
+  status              String            @db.VarChar(30)
+  course_id           BigInt
+  user_id             String            @db.Uuid
+  users               users             @relation(fields: [user_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk3hjx6rcnbmfw368sxigrpfpx0")
+  courses             courses           @relation(fields: [course_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fkho8mcicp4196ebpltdn9wl6co")
+  lesson_progress     lesson_progress[]
+
+  @@unique([user_id, course_id], map: "ukg1muiskd02x66lpy6fqcj6b9q")
+}
+
+model job_roles {
+  id               BigInt    @id @default(autoincrement())
+  active           Boolean
+  created_at       DateTime  @db.Timestamptz(6)
+  description      String?
+  difficulty_level String?   @db.VarChar(50)
+  duration_months  Int?
+  icon_name        String?   @db.VarChar(50)
+  image_url        String?   @db.VarChar(1000)
+  job_openings     Int?
+  maximum_salary   Int?
+  minimum_salary   Int?
+  module_count     Int?
+  slug             String    @unique(map: "uk7abw71goue81kntcwy5iqew0f") @db.VarChar(255)
+  title            String    @db.VarChar(255)
+  trending         Boolean
+  updated_at       DateTime? @db.Timestamptz(6)
+}
+
+model lesson_progress {
+  id                     BigInt         @id @default(autoincrement())
+  completed              Boolean
+  completed_at           DateTime?      @db.Timestamptz(6)
+  last_accessed_at       DateTime?      @db.Timestamptz(6)
+  watch_duration_seconds Int?
+  enrollment_id          BigInt
+  lesson_id              BigInt
+  enrollments            enrollments    @relation(fields: [enrollment_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fkkx3nc17yyecdqwfgdydqmc24x")
+  course_lessons         course_lessons @relation(fields: [lesson_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fkshvj4jx8uyf17o3f25js9iwfh")
+
+  @@unique([enrollment_id, lesson_id], map: "ukfsjlcxaxfenifmlnu5l6yxqgc")
+}
+
+model notifications {
+  id         BigInt   @id @default(autoincrement())
+  action_url String?  @db.VarChar(500)
+  created_at DateTime @db.Timestamptz(6)
+  message    String
+  is_read    Boolean
+  title      String   @db.VarChar(255)
+  type       String?  @db.VarChar(50)
+  user_id    String   @db.Uuid
+  users      users    @relation(fields: [user_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk9y21adhxn0ayjhfocscqox7bh")
+}
+
+model opportunities {
+  id                           BigInt                         @id @default(autoincrement())
+  about_company                String?
+  active                       Boolean
+  category                     String?                        @db.VarChar(100)
+  company                      String                         @db.VarChar(255)
+  company_logo                 String?                        @db.VarChar(1000)
+  created_at                   DateTime                       @db.Timestamptz(6)
+  currency                     String?                        @db.VarChar(20)
+  deadline                     String?                        @db.VarChar(100)
+  description                  String?
+  display_order                Int
+  experience_level             String?                        @db.VarChar(100)
+  featured                     Boolean
+  location                     String                         @db.VarChar(255)
+  match_score                  Int?
+  published                    Boolean
+  role_track_id                String?                        @db.VarChar(100)
+  salary                       String?                        @db.VarChar(100)
+  salary_max                   Float?
+  salary_min                   Float?
+  salary_period                String?                        @db.VarChar(50)
+  title                        String                         @db.VarChar(255)
+  type                         String                         @db.VarChar(50)
+  updated_at                   DateTime?                      @db.Timestamptz(6)
+  work_mode                    String                         @db.VarChar(50)
+  opportunity_applications     opportunity_applications[]
+  opportunity_benefits         opportunity_benefits[]         @ignore
+  opportunity_qualifications   opportunity_qualifications[]   @ignore
+  opportunity_responsibilities opportunity_responsibilities[] @ignore
+  opportunity_skills           opportunity_skills[]           @ignore
+  saved_opportunities          saved_opportunities[]
+
+  @@index([active], map: "idx_opportunities_active")
+  @@index([published], map: "idx_opportunities_published")
+  @@index([type], map: "idx_opportunities_type")
+  @@index([work_mode], map: "idx_opportunities_work_mode")
+}
+
+model opportunity_applications {
+  id             BigInt        @id @default(autoincrement())
+  applied_at     DateTime      @db.Timestamptz(6)
+  notes          String?
+  status         String        @db.VarChar(50)
+  opportunity_id BigInt
+  user_id        String        @db.Uuid
+  users          users         @relation(fields: [user_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fkap5l1h1jiohq08pkatkpth3td")
+  opportunities  opportunities @relation(fields: [opportunity_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fkh0rv8b1trflhtx6ojaejwbx0b")
+
+  @@unique([user_id, opportunity_id], map: "uk_user_opportunity")
+  @@index([opportunity_id], map: "idx_app_opportunity_id")
+  @@index([user_id], map: "idx_app_user_id")
+}
+
+/// The underlying table does not contain a valid unique identifier and can therefore currently not be handled by Prisma Client.
+model opportunity_benefits {
+  opportunity_id BigInt
+  benefit        String?
+  opportunities  opportunities @relation(fields: [opportunity_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk7r6xp3n6mf934ffmpryg1lf2h")
+
+  @@ignore
+}
+
+/// The underlying table does not contain a valid unique identifier and can therefore currently not be handled by Prisma Client.
+model opportunity_qualifications {
+  opportunity_id BigInt
+  qualification  String?
+  opportunities  opportunities @relation(fields: [opportunity_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk6mih8vq5r7bq42dhe1n49rnmp")
+
+  @@ignore
+}
+
+/// The underlying table does not contain a valid unique identifier and can therefore currently not be handled by Prisma Client.
+model opportunity_responsibilities {
+  opportunity_id BigInt
+  responsibility String?
+  opportunities  opportunities @relation(fields: [opportunity_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fkem1c5wgu40fl6ahn1rf1yiiyu")
+
+  @@ignore
+}
+
+/// The underlying table does not contain a valid unique identifier and can therefore currently not be handled by Prisma Client.
+model opportunity_skills {
+  opportunity_id BigInt
+  skill          String?       @db.VarChar(255)
+  opportunities  opportunities @relation(fields: [opportunity_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fkjdsl9me3mhewn358vjrw3fo0v")
+
+  @@ignore
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model orders {
+  id                BigInt            @id @default(autoincrement())
+  coupon_code       String?           @db.VarChar(50)
+  created_at        DateTime          @db.Timestamptz(6)
+  currency          String?           @db.VarChar(10)
+  discount_amount   Float
+  email_sent        Boolean
+  email_sent_at     DateTime?         @db.Timestamptz(6)
+  final_amount      Float
+  order_number      String            @unique(map: "uknthkiu7pgmnqnu86i2jyoe2v7") @db.VarChar(100)
+  original_amount   Float
+  paid_at           DateTime?         @db.Timestamptz(6)
+  razorpay_order_id String?           @db.VarChar(100)
+  status            String            @db.VarChar(30)
+  updated_at        DateTime?         @db.Timestamptz(6)
+  course_id         BigInt?
+  user_id           String            @db.Uuid
+  payment_type      String?           @db.VarChar(30)
+  career_id         BigInt?
+  discount_usages   discount_usages[]
+  users             users             @relation(fields: [user_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk32ql8ubntj5uh44ph9659tiih")
+  courses           courses?          @relation(fields: [course_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk68snkj0g5gsjxllhjc3v5lm0r")
+  careers           careers?          @relation(fields: [career_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fkeraf18wpealr1h8f4v4uo1maa")
+  payments          payments[]
+}
+
+model otp_verifications {
+  id             String    @id @db.Uuid
+  attempt_count  Int
+  created_at     DateTime  @db.Timestamptz(6)
+  email          String    @db.VarChar(255)
+  expires_at     DateTime  @db.Timestamptz(6)
+  last_resent_at DateTime? @db.Timestamptz(6)
+  otp_hash       String    @db.VarChar(255)
+  purpose        String    @db.VarChar(50)
+  used           Boolean
+
+  @@index([email, purpose], map: "idx_otp_email_purpose")
+}
+
+model password_reset_tokens {
+  id         String   @id @db.Uuid
+  created_at DateTime @db.Timestamptz(6)
+  expires_at DateTime @db.Timestamptz(6)
+  token      String   @unique(map: "uk71lqwbwtklmljk3qlsugr1mig") @db.VarChar(128)
+  used       Boolean
+  user_id    String   @db.Uuid
+  users      users    @relation(fields: [user_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fkk3ndxg5xp6v7wd4gjyusp15gq")
+
+  @@index([token], map: "idx_password_reset_token")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model payments {
+  id                  BigInt   @id @default(autoincrement())
+  amount              Float
+  created_at          DateTime @db.Timestamptz(6)
+  currency            String?  @db.VarChar(10)
+  discount            Float
+  final_amount        Float
+  payment_method      String?  @db.VarChar(50)
+  payment_number      String   @unique(map: "ukc6nxg52ow66u8ut91bytspy64") @db.VarChar(100)
+  payment_status      String   @db.VarChar(30)
+  razorpay_order_id   String?  @db.VarChar(100)
+  razorpay_payment_id String?  @db.VarChar(100)
+  razorpay_signature  String?  @db.VarChar(255)
+  signature_verified  Boolean
+  course_id           BigInt?
+  order_id            BigInt
+  user_id             String   @db.Uuid
+  payment_type        String?  @db.VarChar(30)
+  career_id           BigInt?
+  orders              orders   @relation(fields: [order_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk81gagumt0r8y3rmudcgpbk42l")
+  courses             courses? @relation(fields: [course_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk8nlm4urshp5drsk0nlkprig36")
+  careers             careers? @relation(fields: [career_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fka6g54n7k0xusg0j0fm33jcf5v")
+  users               users    @relation(fields: [user_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fkj94hgy9v5fw1munb90tar2eje")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model pending_registrations {
+  id             String    @id @db.Uuid
+  created_at     DateTime  @db.Timestamptz(6)
+  email          String    @unique(map: "idx_pending_email") @db.VarChar(255)
+  last_resent_at DateTime? @db.Timestamptz(6)
+  name           String    @db.VarChar(100)
+  otp_attempts   Int
+  otp_expires_at DateTime  @db.Timestamptz(6)
+  otp_hash       String    @db.VarChar(255)
+  password_hash  String    @db.VarChar(255)
+  role           String    @db.VarChar(20)
+}
+
+model platform_settings {
+  id            BigInt    @id @default(autoincrement())
+  category      String    @db.VarChar(50)
+  setting_key   String    @unique(map: "ukayks1ajfa52rvppxmhanlyvht") @db.VarChar(100)
+  setting_value String?
+  updated_at    DateTime? @db.Timestamptz(6)
+  updated_by    String?   @db.VarChar(100)
+}
+
+/// The underlying table does not contain a valid unique identifier and can therefore currently not be handled by Prisma Client.
+model project_learning_outcomes {
+  project_id BigInt
+  outcome    String?
+  projects   projects @relation(fields: [project_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fkdwur7dv78ij0bb3qfr3qjffld")
+
+  @@ignore
+}
+
+/// The underlying table does not contain a valid unique identifier and can therefore currently not be handled by Prisma Client.
+model project_skills_learned {
+  project_id BigInt
+  skill      String?  @db.VarChar(255)
+  projects   projects @relation(fields: [project_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fkqp8r94yfi2wy4k1212yown2et")
+
+  @@ignore
+}
+
+/// The underlying table does not contain a valid unique identifier and can therefore currently not be handled by Prisma Client.
+model project_tech_stacks {
+  project_id BigInt
+  tech       String?  @db.VarChar(255)
+  projects   projects @relation(fields: [project_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fkdawcyulkx014vli13ps7bf9ay")
+
+  @@ignore
+}
+
+/// The underlying table does not contain a valid unique identifier and can therefore currently not be handled by Prisma Client.
+model project_what_you_will_build {
+  project_id BigInt
+  item       String?
+  projects   projects @relation(fields: [project_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fkknqd61holxogsi3y2gb1qxx9f")
+
+  @@ignore
+}
+
+model projects {
+  id                          BigInt                        @id @default(autoincrement())
+  active                      Boolean
+  category                    String                        @db.VarChar(100)
+  created_at                  DateTime                      @db.Timestamptz(6)
+  description                 String?
+  difficulty                  String?                       @db.VarChar(50)
+  display_order               Int
+  duration                    String?                       @db.VarChar(50)
+  image_url                   String?                       @db.VarChar(1000)
+  industry                    String                        @db.VarChar(100)
+  learners_count              Int?
+  prerequisites               String?
+  published                   Boolean
+  skills_count                Int?
+  slug                        String                        @unique(map: "idx_projects_slug") @db.VarChar(255)
+  title                       String                        @db.VarChar(255)
+  updated_at                  DateTime?                     @db.Timestamptz(6)
+  project_learning_outcomes   project_learning_outcomes[]   @ignore
+  project_skills_learned      project_skills_learned[]      @ignore
+  project_tech_stacks         project_tech_stacks[]         @ignore
+  project_what_you_will_build project_what_you_will_build[] @ignore
+
+  @@index([active], map: "idx_projects_active")
+  @@index([category], map: "idx_projects_category")
+  @@index([industry], map: "idx_projects_industry")
+  @@index([published], map: "idx_projects_published")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model quiz_question_options {
+  question_id    BigInt
+  option_text    String         @db.VarChar(255)
+  option_order   Int
+  quiz_questions quiz_questions @relation(fields: [question_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fkkl6tbgdyegw1o9agywy1xje60")
+
+  @@id([question_id, option_order])
+}
+
+model quiz_questions {
+  id                    BigInt                  @id @default(autoincrement())
+  correct_option_index  Int
+  display_order         Int
+  explanation           String?
+  question_text         String
+  lesson_id             BigInt
+  quiz_question_options quiz_question_options[]
+  course_lessons        course_lessons          @relation(fields: [lesson_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fkdorg3i1q0nqrsukfbq5dc4w6w")
+}
+
+model saved_opportunities {
+  id             BigInt        @id @default(autoincrement())
+  saved_at       DateTime      @db.Timestamptz(6)
+  opportunity_id BigInt
+  user_id        String        @db.Uuid
+  users          users         @relation(fields: [user_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fkd477cxfcsivgu569qs9i1bcyq")
+  opportunities  opportunities @relation(fields: [opportunity_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fkr019i1exmvre3a2ek64qj8iyx")
+
+  @@unique([user_id, opportunity_id], map: "uk_saved_user_opportunity")
+  @@index([opportunity_id], map: "idx_saved_opportunity_id")
+  @@index([user_id], map: "idx_saved_user_id")
+}
+
+model skill_badges {
+  id                  BigInt            @id @default(autoincrement())
+  badge_id            String            @unique(map: "uk_badge_id") @db.VarChar(100)
+  badge_name          String            @db.VarChar(255)
+  course_slug         String?           @db.VarChar(255)
+  course_title        String?           @db.VarChar(255)
+  earned_at           DateTime          @db.Timestamptz(6)
+  module_title        String?           @db.VarChar(255)
+  verification_code   String            @db.VarChar(100)
+  week_number         Int
+  credential_skill_id BigInt
+  user_id             String            @db.Uuid
+  credential_skills   credential_skills @relation(fields: [credential_skill_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fkb0trj8nf5vr6asajfvjkioeh4")
+  users               users             @relation(fields: [user_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fkldxsnlwjyrctiy0jr8sr438yq")
+
+  @@unique([user_id, credential_skill_id], map: "uk_user_skill_badge")
+  @@index([badge_id], map: "idx_badge_id")
+  @@index([user_id], map: "idx_badge_user")
+}
+
+model student_skill_progress {
+  id                   BigInt            @id @default(autoincrement())
+  case_study_completed Boolean
+  completed_at         DateTime?         @db.Timestamptz(6)
+  last_accessed_at     DateTime?         @db.Timestamptz(6)
+  practice_completed   Boolean
+  quiz_completed       Boolean
+  quiz_score           Int?
+  reading_completed    Boolean
+  status               String            @db.VarChar(50)
+  video_completed      Boolean
+  video_progress       Int
+  credential_skill_id  BigInt
+  user_id              String            @db.Uuid
+  credential_skills    credential_skills @relation(fields: [credential_skill_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fkchf91eb00cqntdj2ii9ry9899")
+  users                users             @relation(fields: [user_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fkh9h6i573ufn2mirks42alfnpu")
+
+  @@unique([user_id, credential_skill_id], map: "uk_user_skill_progress")
+  @@index([credential_skill_id], map: "idx_student_skill_skill")
+  @@index([user_id], map: "idx_student_skill_user")
+}
+
+model user_education {
+  id              BigInt   @id @default(autoincrement())
+  cgpa            String?  @db.VarChar(50)
+  created_at      DateTime @db.Timestamptz(6)
+  degree          String   @db.VarChar(150)
+  department      String?  @db.VarChar(150)
+  graduation_year String?  @db.VarChar(10)
+  institution     String   @db.VarChar(200)
+  qualification   String?  @db.VarChar(100)
+  user_id         String   @db.Uuid
+  users           users    @relation(fields: [user_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk925l7dikt8tmrc89n1kbp0ht9")
+
+  @@index([user_id], map: "idx_user_edu_user_id")
+}
+
+model user_projects {
+  id           BigInt   @id @default(autoincrement())
+  category     String?  @db.VarChar(100)
+  created_at   DateTime @db.Timestamptz(6)
+  description  String?
+  github_url   String?  @db.VarChar(255)
+  image_url    String?  @db.VarChar(500)
+  live_url     String?  @db.VarChar(255)
+  status       String?  @db.VarChar(50)
+  technologies String?  @db.VarChar(255)
+  title        String   @db.VarChar(200)
+  user_id      String   @db.Uuid
+  users        users    @relation(fields: [user_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fkr25ilmlcm8ugp8i3rogl6jp0l")
+
+  @@index([user_id], map: "idx_user_projects_user_id")
+}
+
+model user_skills {
+  id         BigInt   @id @default(autoincrement())
+  category   String   @db.VarChar(50)
+  created_at DateTime @db.Timestamptz(6)
+  level      String   @db.VarChar(30)
+  name       String   @db.VarChar(100)
+  user_id    String   @db.Uuid
+  users      users    @relation(fields: [user_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fkro13if9r7fwkr5115715127ai")
+
+  @@index([user_id], map: "idx_user_skills_user_id")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model users {
+  id                       String                     @id @db.Uuid
+  active                   Boolean
+  created_at               DateTime                   @db.Timestamptz(6)
+  email                    String                     @unique(map: "uk6dotkott2kjsp8vw4d0m25fb7") @db.VarChar(255)
+  email_verified           Boolean
+  last_login               DateTime?                  @db.Timestamptz(6)
+  name                     String                     @db.VarChar(100)
+  password_hash            String?                    @db.VarChar(255)
+  phone                    String?                    @db.VarChar(20)
+  profile_image            String?                    @db.VarChar(1000)
+  provider                 String                     @db.VarChar(20)
+  provider_id              String?                    @db.VarChar(255)
+  role                     String                     @db.VarChar(20)
+  welcome_email_sent       Boolean
+  bio                      String?
+  career_goal              String?
+  date_of_birth            String?                    @db.VarChar(50)
+  experience_level         String?                    @db.VarChar(50)
+  first_name               String?                    @db.VarChar(50)
+  gender                   String?                    @db.VarChar(20)
+  github_url               String?                    @db.VarChar(255)
+  highest_qualification    String?                    @db.VarChar(100)
+  last_name                String?                    @db.VarChar(50)
+  linkedin_url             String?                    @db.VarChar(255)
+  location                 String?                    @db.VarChar(100)
+  other_website_url        String?                    @db.VarChar(255)
+  portfolio_url            String?                    @db.VarChar(255)
+  preferred_industry       String?                    @db.VarChar(100)
+  preferred_location       String?                    @db.VarChar(100)
+  resume_file_size         BigInt?
+  resume_filename          String?                    @db.VarChar(255)
+  resume_uploaded_at       DateTime?                  @db.Timestamptz(6)
+  resume_url               String?                    @db.VarChar(500)
+  target_job_role          String?                    @db.VarChar(100)
+  open_to_work             Boolean?                   @default(false)
+  career_enrollments       career_enrollments[]
+  certificates             certificates[]
+  credential_enrollments   credential_enrollments[]
+  discount_usages          discount_usages[]
+  enrollments              enrollments[]
+  notifications            notifications[]
+  opportunity_applications opportunity_applications[]
+  orders                   orders[]
+  password_reset_tokens    password_reset_tokens[]
+  payments                 payments[]
+  saved_opportunities      saved_opportunities[]
+  skill_badges             skill_badges[]
+  student_skill_progress   student_skill_progress[]
+  user_education           user_education[]
+  user_projects            user_projects[]
+  user_skills              user_skills[]
+}

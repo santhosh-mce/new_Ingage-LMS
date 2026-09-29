@@ -1,0 +1,97 @@
+"use client";
+
+import React, { useState } from "react";
+import { usePathname, useRouter } from "next/navigation";
+import { Header } from "./Header";
+import { Footer } from "./Footer";
+import { ScreenNavigator } from "./ScreenNavigator";
+import { AuthModal } from "./AuthModal";
+import { useAuth } from "@/context/AuthContext";
+
+export function AppShell({ children }: { children: React.ReactNode }) {
+  const pathname = usePathname() || "/";
+  const router = useRouter();
+  const { currentUser, logout } = useAuth();
+
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
+  const [authModalMode, setAuthModalMode] = useState<"login" | "signup">("login");
+
+  React.useEffect(() => {
+    if (pathname === '/login') {
+      setAuthModalMode('login');
+      setIsAuthModalOpen(true);
+    } else if (pathname === '/signup') {
+      setAuthModalMode('signup');
+      setIsAuthModalOpen(true);
+    }
+  }, [pathname]);
+
+  const navigate = (p: string) => {
+    router.push(p);
+  };
+
+  const showToast = (message: string) => {
+    setToastMessage(message);
+    setTimeout(() => setToastMessage(null), 4000);
+  };
+
+  const handleOpenAuth = (mode: "login" | "signup" = "login") => {
+    setAuthModalMode(mode);
+    setIsAuthModalOpen(true);
+  };
+
+  const isAdminRoute = pathname.startsWith("/admin");
+
+  return (
+    <div
+      className={`min-h-screen ${
+        isAdminRoute ? "bg-slate-950 text-slate-100" : "bg-white text-gray-900"
+      } flex flex-col font-sans selection:bg-lime-200 selection:text-lime-900 relative`}
+    >
+      {toastMessage && (
+        <div
+          id="global-toast-notification"
+          className="fixed top-20 sm:top-22 right-3 sm:right-6 z-50 max-w-[calc(100vw-1.5rem)] bg-gray-900 text-white text-xs sm:text-sm px-4 py-2.5 rounded-xl shadow-2xl border border-gray-700 flex items-center gap-2.5 animate-in slide-in-from-top-4 fade-in duration-200"
+        >
+          <span className="w-2 h-2 rounded-full bg-lime-400 shrink-0 animate-pulse"></span>
+          <span className="font-medium">{toastMessage}</span>
+          <button
+            onClick={() => setToastMessage(null)}
+            className="ml-2 text-gray-400 hover:text-white transition-colors cursor-pointer text-xs"
+            aria-label="Dismiss toast"
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
+      {!isAdminRoute && (
+        <Header
+          currentPath={pathname}
+          onNavigate={navigate}
+          currentUser={currentUser}
+          onOpenAuth={handleOpenAuth}
+          onLogout={logout}
+        />
+      )}
+
+      <main className="flex-1">{children}</main>
+
+      {!isAdminRoute && <Footer onNavigate={navigate} />}
+
+      <ScreenNavigator currentPath={pathname} onNavigate={navigate} currentUser={currentUser} />
+
+      <AuthModal
+        isOpen={isAuthModalOpen}
+        initialMode={authModalMode}
+        onClose={() => setIsAuthModalOpen(false)}
+        onSuccess={() => {
+          setIsAuthModalOpen(false);
+          showToast("Authentication successful!");
+        }}
+        onNavigate={navigate}
+      />
+    </div>
+  );
+}
