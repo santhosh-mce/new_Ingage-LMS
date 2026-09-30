@@ -15,6 +15,10 @@ import {
   ArrowLeft,
   CheckCircle2,
   KeyRound,
+  GraduationCap,
+  Briefcase,
+  Star,
+  CheckCircle,
 } from 'lucide-react';
 import { AuthMode, UserProfile } from '../types';
 import {
@@ -48,24 +52,22 @@ export function AuthModal({
   onSuccess,
   onNavigate,
 }: AuthModalProps) {
-  // Top-level mode: 'signup' stays at /signup, 'login' stays at /login
-  const [mode, setMode] = useState<'signup' | 'login'>(() => {
-    return (initialMode === 'login' || initialMode === 'forgot-password' || initialMode === 'reset-password') ? 'login' : 'signup';
-  });
-
-  // State Machines
-  const [signupStep, setSignupStep] = useState<SignupStep>('SIGNUP_FORM');
+  // Mode & Step
+  const [mode, setMode] = useState<'login' | 'signup'>(
+    initialMode === 'login' ? 'login' : 'signup'
+  );
   const [loginStep, setLoginStep] = useState<LoginStep>('LOGIN_FORM');
+  const [signupStep, setSignupStep] = useState<SignupStep>('SIGNUP_FORM');
 
   // Form Fields
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [rememberMe, setRememberMe] = useState(false);
   const [agreeTerms, setAgreeTerms] = useState(false);
-  const [rememberMe, setRememberMe] = useState(true);
 
-  // Reset Password State
+  // Forgot / Reset Password Fields
   const [newPassword, setNewPassword] = useState('');
   const [confirmNewPassword, setConfirmNewPassword] = useState('');
 
@@ -158,18 +160,17 @@ export function AuthModal({
   const handleSignupSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
-    setSuccessBanner(null);
 
-    if (!email || !email.includes('@')) {
-      setError('Please enter a valid email address.');
-      return;
-    }
     if (!fullName.trim()) {
       setError('Please enter your full name.');
       return;
     }
-    if (!password || password.length < 8) {
-      setError('Password must be at least 8 characters.');
+    if (!email.trim()) {
+      setError('Please enter your email address.');
+      return;
+    }
+    if (password.length < 8) {
+      setError('Password must be at least 8 characters long.');
       return;
     }
     if (password !== confirmPassword) {
@@ -206,8 +207,8 @@ export function AuthModal({
 
         setSuccessInfo({
           isOpen: true,
-          title: 'Create Your Account',
-          subtitle: 'Start your learning journey today',
+          title: 'Create Account',
+          subtitle: 'Account created successfully',
           successTitle: 'Account Created!',
           message: 'Welcome to Ingage LMS. Setting up your dashboard...',
           user,
@@ -239,27 +240,25 @@ export function AuthModal({
   const handleLoginSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
-    setSuccessBanner(null);
 
-    if (!email || !email.includes('@')) {
-      setError('Please enter a valid email address.');
-      return;
-    }
-    if (!password) {
-      setError('Please enter your password.');
+    if (!email.trim() || !password) {
+      setError('Please enter both username/email and password.');
       return;
     }
 
     setIsLoading(true);
-    setLoadingText('Logging in...');
+    setLoadingText('Verifying credentials...');
 
     try {
-      const response = await loginUser({ email: email.trim(), password });
+      const response = await loginUser({
+        email: email.trim(),
+        password,
+      });
 
-      if (response.token) {
+      if (response && response.token) {
         const user: UserProfile = {
           id: response.userId || '',
-          name: response.name || '',
+          name: response.name || email.split('@')[0],
           email: response.email || email.trim(),
           role: response.role || 'STUDENT',
           enrolledPaths: [],
@@ -292,23 +291,20 @@ export function AuthModal({
   };
 
   // ---------------------------------------------------------------------------
-  // 3. FORGOT PASSWORD: Direct Password Reset (No OTP)
+  // 3. RESET PASSWORD
   // ---------------------------------------------------------------------------
   const handleResetPasswordSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
-    setSuccessBanner(null);
 
-    if (!email || !email.includes('@')) {
-      setError('Please enter a valid email address.');
+    if (!email.trim()) {
+      setError('Please enter your email address.');
       return;
     }
-
     if (!isResetPasswordValid) {
-      setError('Password must be at least 8 characters and include uppercase, lowercase, and numbers.');
+      setError('New password must be at least 8 chars with an uppercase letter, lowercase letter, and a number.');
       return;
     }
-
     if (newPassword !== confirmNewPassword) {
       setError('Passwords do not match. Please verify.');
       return;
@@ -320,34 +316,36 @@ export function AuthModal({
     try {
       await resetPassword({
         email: email.trim(),
-        resetToken: 'direct_reset',
         newPassword,
         confirmPassword: confirmNewPassword,
       });
-
+      setSuccessBanner('Password updated successfully! You can now log in.');
       setLoginStep('RESET_SUCCESS');
-      setPassword('');
-      setConfirmPassword('');
-      setNewPassword('');
-      setConfirmNewPassword('');
-      setError(null);
+      setPassword(newPassword);
     } catch (err: unknown) {
-      setError(getAuthErrorMessage(err, 'Unable to reset password. Please try again.'));
+      setError(getAuthErrorMessage(err, 'Failed to reset password. Please try again.'));
     } finally {
       setIsLoading(false);
     }
   };
 
-  // Social Auth Handlers
+  // ---------------------------------------------------------------------------
+  // 4. Social Auth
+  // ---------------------------------------------------------------------------
   const handleSocialAuth = (provider: 'Google' | 'LinkedIn') => {
-    setIsLoading(true);
-    setLoadingText(`Connecting to ${provider}...`);
-    const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || '/api' || 'http://localhost:8080/api';
-    window.location.assign(`${apiBaseUrl}/oauth2/authorization/${provider.toLowerCase()}`);
+    const backendBase = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
+    if (provider === 'Google') {
+      window.location.href = `${backendBase}/oauth2/authorization/google`;
+    } else {
+      window.location.href = `${backendBase}/oauth2/authorization/linkedin`;
+    }
   };
 
-  // Quick Demo Autofill
+  // ---------------------------------------------------------------------------
+  // 5. Quick Demo Credentials Helper
+  // ---------------------------------------------------------------------------
   const handleQuickDemo = (roleType: 'learner' | 'pro') => {
+    setError(null);
     if (roleType === 'learner') {
       setFullName('Jordan Vance');
       setEmail('jordan.vance@example.com');
@@ -362,43 +360,6 @@ export function AuthModal({
       setAgreeTerms(true);
     }
   };
-
-  // Dynamic Header based on active state
-  const getHeaderInfo = () => {
-    if (mode === 'signup') {
-      if (signupStep === 'SIGNUP_SUCCESS') {
-        return {
-          title: 'Welcome to InGage LMS',
-          subtitle: 'Your learning journey starts now',
-        };
-      }
-      return {
-        title: 'Create Account',
-        subtitle: 'Start your learning journey today',
-      };
-    } else {
-      switch (loginStep) {
-        case 'FORGOT_PASSWORD':
-          return {
-            title: 'Reset Your Password',
-            subtitle: 'Enter your email and create a new secure password',
-          };
-        case 'RESET_SUCCESS':
-          return {
-            title: 'Password Updated',
-            subtitle: 'Account secured successfully',
-          };
-        case 'LOGIN_FORM':
-        default:
-          return {
-            title: 'Welcome Back',
-            subtitle: 'Log in to continue your learning journey',
-          };
-      }
-    }
-  };
-
-  const { title, subtitle } = getHeaderInfo();
 
   if (successInfo?.isOpen) {
     return (
@@ -425,79 +386,91 @@ export function AuthModal({
     <>
       <div
         id="auth-modal-backdrop"
-        className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 bg-black/60 backdrop-blur-xs transition-opacity animate-in fade-in duration-200"
+        className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 md:p-6 bg-black/60 backdrop-blur-xs transition-opacity overflow-y-auto animate-in fade-in duration-200"
         onClick={(e) => {
           if (e.target === e.currentTarget) onClose();
         }}
       >
+        {/* Split-Screen Modern Authentication Card */}
         <div
           id="auth-modal-card"
-          className="relative w-full max-w-[460px] bg-white rounded-2xl shadow-2xl border border-gray-100 overflow-hidden flex flex-col max-h-[92vh] transition-all transform scale-100"
+          className="relative w-full max-w-[960px] bg-white rounded-[20px] shadow-2xl border border-gray-100 overflow-hidden flex flex-col md:flex-row my-auto transition-all transform scale-100"
         >
-          {/* Header */}
-          <div className="pt-6 px-5 sm:px-8 pb-4 flex items-start justify-between gap-3">
-            <div>
-              <h2 id="auth-modal-title" className="text-xl sm:text-2xl font-bold text-gray-900 tracking-tight">
-                {title}
-              </h2>
-              <p id="auth-modal-subtitle" className="text-xs sm:text-sm text-gray-500 mt-1">
-                {subtitle}
+          {/* Universal Close Button */}
+          <button
+            id="auth-modal-close-btn"
+            onClick={onClose}
+            className="absolute top-3.5 right-3.5 sm:top-4 sm:right-4 z-30 p-2 rounded-full text-gray-500 hover:text-gray-800 bg-gray-100/90 hover:bg-gray-200 md:text-white/80 md:hover:text-white md:bg-white/10 md:hover:bg-white/20 backdrop-blur-md transition-colors cursor-pointer shadow-xs"
+            aria-label="Close modal"
+          >
+            <X className="w-4 h-4 sm:w-5 sm:h-5" />
+          </button>
+
+          {/* ================================================================= */}
+          {/* LEFT SECTION: AUTHENTICATION FORM */}
+          {/* ================================================================= */}
+          <div className="w-full md:w-[54%] lg:w-[55%] flex flex-col bg-white p-6 sm:p-8 lg:p-10 overflow-y-auto max-h-[92vh] md:max-h-[88vh]">
+            {/* Header */}
+            <div className="mb-5 sm:mb-6">
+              <h1 id="auth-modal-title" className="text-2xl sm:text-3xl font-extrabold text-gray-900 tracking-tight">
+                {mode === 'signup'
+                  ? 'Sign Up'
+                  : loginStep === 'FORGOT_PASSWORD'
+                  ? 'Reset Password'
+                  : loginStep === 'RESET_SUCCESS'
+                  ? 'Password Updated'
+                  : 'Sign In'}
+              </h1>
+              <p id="auth-modal-subtitle" className="text-xs sm:text-sm text-gray-500 mt-1.5 leading-relaxed">
+                {mode === 'signup'
+                  ? 'Start your learning journey with InGage LMS today.'
+                  : loginStep === 'FORGOT_PASSWORD'
+                  ? 'Enter your registered email and choose a new password.'
+                  : loginStep === 'RESET_SUCCESS'
+                  ? 'Your account credentials have been updated.'
+                  : 'Please enter your account details to access your dashboard.'}
               </p>
             </div>
 
-            <button
-              id="auth-modal-close-btn"
-              onClick={onClose}
-              className="text-gray-400 hover:text-gray-600 p-1.5 rounded-lg hover:bg-gray-100 transition-colors shrink-0 cursor-pointer"
-              aria-label="Close modal"
-            >
-              <X className="w-5 h-5" />
-            </button>
-          </div>
-
-          <div className="w-full border-b border-gray-100" />
-
-          {/* Body Content */}
-          <div className="px-5 sm:px-8 py-5 overflow-y-auto space-y-4 flex-1">
             {/* Inline Error Banner */}
             {error && (
               <div
                 id="auth-error-banner"
-                className="p-3.5 rounded-xl bg-red-50 border border-red-200 text-red-700 text-xs sm:text-sm flex items-start gap-2.5 animate-in fade-in duration-200"
+                className="mb-4 p-3.5 rounded-xl bg-red-50 border border-red-200 text-red-700 text-xs sm:text-sm flex items-start gap-2.5 animate-in fade-in duration-200"
               >
                 <AlertCircle className="w-4 h-4 mt-0.5 shrink-0 text-red-600" />
                 <span className="font-medium leading-relaxed">{error}</span>
               </div>
             )}
 
-            {/* Inline Info/Success Banner */}
+            {/* Inline Success Banner */}
             {successBanner && (
               <div
                 id="auth-success-banner"
-                className="p-3.5 rounded-xl bg-lime-50 border border-lime-200 text-lime-800 text-xs sm:text-sm flex items-center gap-2.5 animate-in fade-in duration-200"
+                className="mb-4 p-3.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs sm:text-sm flex items-center gap-2.5 animate-in fade-in duration-200"
               >
-                <Check className="w-4 h-4 shrink-0 text-lime-600" />
+                <Check className="w-4 h-4 shrink-0 text-emerald-600" />
                 <span>{successBanner}</span>
               </div>
             )}
 
             {/* ============================================================= */}
-            {/* SIGNUP FLOW */}
+            {/* SIGNUP FORM */}
             {/* ============================================================= */}
             {mode === 'signup' && (
               <>
                 {signupStep === 'SIGNUP_FORM' && (
                   <>
                     {/* Social Auth */}
-                    <div className="space-y-3 pt-1">
+                    <div className="grid grid-cols-2 gap-3 mb-4">
                       <button
                         id="social-google-btn"
                         type="button"
                         onClick={() => handleSocialAuth('Google')}
                         disabled={isLoading}
-                        className="w-full py-2.5 px-4 rounded-xl border border-gray-200 hover:border-gray-300 hover:bg-gray-50/90 active:bg-gray-100 transition-all flex items-center justify-center gap-3 text-sm font-semibold text-gray-700 shadow-2xs group cursor-pointer"
+                        className="w-full py-2.5 px-3 rounded-xl border border-gray-200 hover:border-gray-300 hover:bg-gray-50/90 active:bg-gray-100 transition-all flex items-center justify-center gap-2 text-xs sm:text-sm font-semibold text-gray-700 shadow-2xs group cursor-pointer"
                       >
-                        <svg className="w-5 h-5 shrink-0" viewBox="0 0 24 24">
+                        <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24">
                           <path
                             fill="#4285F4"
                             d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.66-5.17 3.66-9.17z"
@@ -515,7 +488,7 @@ export function AuthModal({
                             d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.33 0 3.26 2.64 1.25 6.58l4.03 3.15c.95-2.83 3.6-4.98 6.72-4.98z"
                           />
                         </svg>
-                        <span>Continue with Google</span>
+                        <span>Google</span>
                       </button>
 
                       <button
@@ -523,23 +496,23 @@ export function AuthModal({
                         type="button"
                         onClick={() => handleSocialAuth('LinkedIn')}
                         disabled={isLoading}
-                        className="w-full py-2.5 px-4 rounded-xl border border-gray-200 hover:border-gray-300 hover:bg-gray-50/90 active:bg-gray-100 transition-all flex items-center justify-center gap-3 text-sm font-semibold text-gray-700 shadow-2xs group cursor-pointer"
+                        className="w-full py-2.5 px-3 rounded-xl border border-gray-200 hover:border-gray-300 hover:bg-gray-50/90 active:bg-gray-100 transition-all flex items-center justify-center gap-2 text-xs sm:text-sm font-semibold text-gray-700 shadow-2xs group cursor-pointer"
                       >
-                        <svg className="w-5 h-5 shrink-0" viewBox="0 0 24 24">
+                        <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24">
                           <path
                             fill="#0A66C2"
                             d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433c-1.144 0-2.063-.926-2.063-2.065 0-1.138.92-2.063 2.063-2.063 1.14 0 2.064.925 2.064 2.063 0 1.139-.925 2.065-2.064 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451c.979 0 1.778-.773 1.778-1.729V1.73C24 .774 23.205 0 22.222 0h.003z"
                           />
                         </svg>
-                        <span>Continue with LinkedIn</span>
+                        <span>LinkedIn</span>
                       </button>
+                    </div>
 
-                      <div className="relative my-3 flex items-center justify-center">
-                        <div className="w-full border-t border-gray-200"></div>
-                        <span className="absolute bg-white px-3 text-xs text-gray-500 font-medium tracking-wide">
-                          Or sign up with email
-                        </span>
-                      </div>
+                    <div className="relative my-4 flex items-center justify-center">
+                      <div className="w-full border-t border-gray-200"></div>
+                      <span className="absolute bg-white px-3 text-[11px] sm:text-xs text-gray-400 font-medium tracking-wide uppercase">
+                        Or sign up with email
+                      </span>
                     </div>
 
                     <form onSubmit={handleSignupSubmit} className="space-y-3.5">
@@ -557,8 +530,8 @@ export function AuthModal({
                             required
                             value={fullName}
                             onChange={(e) => setFullName(e.target.value)}
-                            className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-gray-200 focus:border-lime-600 focus:ring-4 focus:ring-lime-100 text-sm text-gray-900 transition-all outline-none"
-                            placeholder="Alex Morgan"
+                            className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-gray-200 focus:border-emerald-600 focus:ring-4 focus:ring-emerald-100 text-sm text-gray-900 transition-all outline-none"
+                            placeholder="e.g. Alex Morgan"
                           />
                         </div>
                       </div>
@@ -577,8 +550,8 @@ export function AuthModal({
                             required
                             value={email}
                             onChange={(e) => setEmail(e.target.value)}
-                            className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-gray-200 focus:border-lime-600 focus:ring-4 focus:ring-lime-100 text-sm text-gray-900 transition-all outline-none"
-                            placeholder="alex.morgan@company.com"
+                            className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-gray-200 focus:border-emerald-600 focus:ring-4 focus:ring-emerald-100 text-sm text-gray-900 transition-all outline-none"
+                            placeholder="name@example.com"
                           />
                         </div>
                       </div>
@@ -597,7 +570,7 @@ export function AuthModal({
                             required
                             value={password}
                             onChange={(e) => setPassword(e.target.value)}
-                            className="w-full pl-10 pr-10 py-2.5 rounded-xl border border-gray-200 focus:border-lime-600 focus:ring-4 focus:ring-lime-100 text-sm text-gray-900 transition-all outline-none"
+                            className="w-full pl-10 pr-10 py-2.5 rounded-xl border border-gray-200 focus:border-emerald-600 focus:ring-4 focus:ring-emerald-100 text-sm text-gray-900 transition-all outline-none"
                             placeholder="At least 8 characters"
                           />
                           <button
@@ -624,7 +597,7 @@ export function AuthModal({
                             required
                             value={confirmPassword}
                             onChange={(e) => setConfirmPassword(e.target.value)}
-                            className="w-full pl-10 pr-10 py-2.5 rounded-xl border border-gray-200 focus:border-lime-600 focus:ring-4 focus:ring-lime-100 text-sm text-gray-900 transition-all outline-none"
+                            className="w-full pl-10 pr-10 py-2.5 rounded-xl border border-gray-200 focus:border-emerald-600 focus:ring-4 focus:ring-emerald-100 text-sm text-gray-900 transition-all outline-none"
                             placeholder="Re-enter your password"
                           />
                           <button
@@ -639,18 +612,18 @@ export function AuthModal({
 
                       <div className="flex items-start gap-2.5 pt-1">
                         <input
-                          id="signup-agree-terms"
+                          id="agree-terms"
                           type="checkbox"
                           checked={agreeTerms}
                           onChange={(e) => setAgreeTerms(e.target.checked)}
-                          className="mt-1 w-4 h-4 text-lime-600 rounded-md border-gray-300 focus:ring-lime-500 cursor-pointer"
+                          className="mt-0.5 w-4 h-4 text-emerald-600 rounded-md border-gray-300 focus:ring-emerald-500 cursor-pointer"
                         />
-                        <label htmlFor="signup-agree-terms" className="text-xs text-gray-600 select-none">
+                        <label htmlFor="agree-terms" className="text-xs text-gray-600 cursor-pointer select-none leading-relaxed">
                           I agree to the{' '}
                           <button
                             type="button"
                             onClick={() => setShowTermsModal(true)}
-                            className="text-lime-700 font-semibold hover:underline"
+                            className="text-emerald-700 font-semibold hover:underline"
                           >
                             Terms of Service
                           </button>{' '}
@@ -658,7 +631,7 @@ export function AuthModal({
                           <button
                             type="button"
                             onClick={() => setShowTermsModal(true)}
-                            className="text-lime-700 font-semibold hover:underline"
+                            className="text-emerald-700 font-semibold hover:underline"
                           >
                             Privacy Policy
                           </button>
@@ -670,7 +643,7 @@ export function AuthModal({
                         id="signup-submit-btn"
                         type="submit"
                         disabled={isLoading}
-                        className="w-full mt-2 py-3 px-4 rounded-xl bg-lime-600 hover:bg-lime-700 active:bg-lime-800 text-white font-semibold text-sm shadow-md hover:shadow-lg transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                        className="w-full mt-2 py-3 px-4 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 active:from-emerald-800 active:to-teal-800 text-white font-semibold text-sm shadow-md hover:shadow-lg transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
                       >
                         {isLoading ? (
                           <>
@@ -690,7 +663,7 @@ export function AuthModal({
 
                 {signupStep === 'SIGNUP_SUCCESS' && (
                   <div className="py-6 text-center space-y-4 animate-in fade-in duration-300">
-                    <div className="w-16 h-16 bg-lime-100 text-lime-700 rounded-full flex items-center justify-center mx-auto">
+                    <div className="w-16 h-16 bg-emerald-100 text-emerald-700 rounded-full flex items-center justify-center mx-auto">
                       <CheckCircle2 className="w-8 h-8" />
                     </div>
                     <div>
@@ -704,7 +677,7 @@ export function AuthModal({
                         setMode('login');
                         setLoginStep('LOGIN_FORM');
                       }}
-                      className="w-full py-3 px-4 rounded-xl bg-lime-600 hover:bg-lime-700 text-white font-semibold text-sm shadow-md transition-all cursor-pointer"
+                      className="w-full py-3 px-4 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-semibold text-sm shadow-md transition-all cursor-pointer"
                     >
                       Continue to Log In
                     </button>
@@ -721,15 +694,15 @@ export function AuthModal({
                 {loginStep === 'LOGIN_FORM' && (
                   <>
                     {/* Social Auth */}
-                    <div className="space-y-3 pt-1">
+                    <div className="grid grid-cols-2 gap-3 mb-4">
                       <button
                         id="login-social-google-btn"
                         type="button"
                         onClick={() => handleSocialAuth('Google')}
                         disabled={isLoading}
-                        className="w-full py-2.5 px-4 rounded-xl border border-gray-200 hover:border-gray-300 hover:bg-gray-50/90 active:bg-gray-100 transition-all flex items-center justify-center gap-3 text-sm font-semibold text-gray-700 shadow-2xs group cursor-pointer"
+                        className="w-full py-2.5 px-3 rounded-xl border border-gray-200 hover:border-gray-300 hover:bg-gray-50/90 active:bg-gray-100 transition-all flex items-center justify-center gap-2 text-xs sm:text-sm font-semibold text-gray-700 shadow-2xs group cursor-pointer"
                       >
-                        <svg className="w-5 h-5 shrink-0" viewBox="0 0 24 24">
+                        <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24">
                           <path
                             fill="#4285F4"
                             d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.66-5.17 3.66-9.17z"
@@ -747,7 +720,7 @@ export function AuthModal({
                             d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.33 0 3.26 2.64 1.25 6.58l4.03 3.15c.95-2.83 3.6-4.98 6.72-4.98z"
                           />
                         </svg>
-                        <span>Continue with Google</span>
+                        <span>Google</span>
                       </button>
 
                       <button
@@ -755,29 +728,29 @@ export function AuthModal({
                         type="button"
                         onClick={() => handleSocialAuth('LinkedIn')}
                         disabled={isLoading}
-                        className="w-full py-2.5 px-4 rounded-xl border border-gray-200 hover:border-gray-300 hover:bg-gray-50/90 active:bg-gray-100 transition-all flex items-center justify-center gap-3 text-sm font-semibold text-gray-700 shadow-2xs group cursor-pointer"
+                        className="w-full py-2.5 px-3 rounded-xl border border-gray-200 hover:border-gray-300 hover:bg-gray-50/90 active:bg-gray-100 transition-all flex items-center justify-center gap-2 text-xs sm:text-sm font-semibold text-gray-700 shadow-2xs group cursor-pointer"
                       >
-                        <svg className="w-5 h-5 shrink-0" viewBox="0 0 24 24">
+                        <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24">
                           <path
                             fill="#0A66C2"
                             d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433c-1.144 0-2.063-.926-2.063-2.065 0-1.138.92-2.063 2.063-2.063 1.14 0 2.064.925 2.064 2.063 0 1.139-.925 2.065-2.064 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451c.979 0 1.778-.773 1.778-1.729V1.73C24 .774 23.205 0 22.222 0h.003z"
                           />
                         </svg>
-                        <span>Continue with LinkedIn</span>
+                        <span>LinkedIn</span>
                       </button>
+                    </div>
 
-                      <div className="relative my-3 flex items-center justify-center">
-                        <div className="w-full border-t border-gray-200"></div>
-                        <span className="absolute bg-white px-3 text-xs text-gray-500 font-medium tracking-wide">
-                          Or log in with email
-                        </span>
-                      </div>
+                    <div className="relative my-4 flex items-center justify-center">
+                      <div className="w-full border-t border-gray-200"></div>
+                      <span className="absolute bg-white px-3 text-[11px] sm:text-xs text-gray-400 font-medium tracking-wide uppercase">
+                        Or log in with email
+                      </span>
                     </div>
 
                     <form onSubmit={handleLoginSubmit} className="space-y-3.5">
                       <div>
                         <label className="block text-xs font-semibold text-gray-700 mb-1" htmlFor="login-email">
-                          Email Address
+                          Username / Email
                         </label>
                         <div className="relative">
                           <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-gray-400">
@@ -785,12 +758,12 @@ export function AuthModal({
                           </div>
                           <input
                             id="login-email"
-                            type="email"
+                            type="text"
                             required
                             value={email}
                             onChange={(e) => setEmail(e.target.value)}
-                            className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-gray-200 focus:border-lime-600 focus:ring-4 focus:ring-lime-100 text-sm text-gray-900 transition-all outline-none"
-                            placeholder="alex.morgan@company.com"
+                            className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-gray-200 focus:border-emerald-600 focus:ring-4 focus:ring-emerald-100 text-sm text-gray-900 transition-all outline-none"
+                            placeholder="Enter your username or email"
                           />
                         </div>
                       </div>
@@ -804,11 +777,12 @@ export function AuthModal({
                             type="button"
                             onClick={() => {
                               setError(null);
+                              setSuccessBanner(null);
                               setLoginStep('FORGOT_PASSWORD');
                             }}
-                            className="text-xs text-lime-700 font-semibold hover:underline cursor-pointer"
+                            className="text-xs text-emerald-700 hover:text-emerald-800 font-semibold hover:underline cursor-pointer"
                           >
-                            Forgot Password?
+                            Forgot your password?
                           </button>
                         </div>
                         <div className="relative">
@@ -821,7 +795,7 @@ export function AuthModal({
                             required
                             value={password}
                             onChange={(e) => setPassword(e.target.value)}
-                            className="w-full pl-10 pr-10 py-2.5 rounded-xl border border-gray-200 focus:border-lime-600 focus:ring-4 focus:ring-lime-100 text-sm text-gray-900 transition-all outline-none"
+                            className="w-full pl-10 pr-10 py-2.5 rounded-xl border border-gray-200 focus:border-emerald-600 focus:ring-4 focus:ring-emerald-100 text-sm text-gray-900 transition-all outline-none"
                             placeholder="Enter your password"
                           />
                           <button
@@ -834,13 +808,13 @@ export function AuthModal({
                         </div>
                       </div>
 
-                      <div className="flex items-center justify-between pt-1">
+                      <div className="flex items-center justify-between pt-0.5">
                         <label className="flex items-center gap-2 cursor-pointer select-none">
                           <input
                             type="checkbox"
                             checked={rememberMe}
                             onChange={(e) => setRememberMe(e.target.checked)}
-                            className="w-4 h-4 text-lime-600 rounded-md border-gray-300 focus:ring-lime-500 cursor-pointer"
+                            className="w-4 h-4 text-emerald-600 rounded-md border-gray-300 focus:ring-emerald-500 cursor-pointer"
                           />
                           <span className="text-xs text-gray-600">Remember this device</span>
                         </label>
@@ -850,7 +824,7 @@ export function AuthModal({
                         id="login-submit-btn"
                         type="submit"
                         disabled={isLoading}
-                        className="w-full mt-2 py-3 px-4 rounded-xl bg-lime-600 hover:bg-lime-700 active:bg-lime-800 text-white font-semibold text-sm shadow-md hover:shadow-lg transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                        className="w-full mt-2 py-3 px-4 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 active:from-emerald-800 active:to-teal-800 text-white font-semibold text-sm shadow-md hover:shadow-lg transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
                       >
                         {isLoading ? (
                           <>
@@ -859,7 +833,7 @@ export function AuthModal({
                           </>
                         ) : (
                           <>
-                            <span>Log In</span>
+                            <span>Login</span>
                             <ArrowRight className="w-4 h-4" />
                           </>
                         )}
@@ -885,8 +859,8 @@ export function AuthModal({
                           required
                           value={email}
                           onChange={(e) => setEmail(e.target.value)}
-                          className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-gray-200 focus:border-lime-600 focus:ring-4 focus:ring-lime-100 text-sm text-gray-900 transition-all outline-none"
-                          placeholder="your.email@example.com"
+                          className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-gray-200 focus:border-emerald-600 focus:ring-4 focus:ring-emerald-100 text-sm text-gray-900 transition-all outline-none"
+                          placeholder="name@example.com"
                         />
                       </div>
                     </div>
@@ -905,7 +879,7 @@ export function AuthModal({
                           required
                           value={newPassword}
                           onChange={(e) => setNewPassword(e.target.value)}
-                          className="w-full pl-10 pr-10 py-2.5 rounded-xl border border-gray-200 focus:border-lime-600 focus:ring-4 focus:ring-lime-100 text-sm text-gray-900 transition-all outline-none"
+                          className="w-full pl-10 pr-10 py-2.5 rounded-xl border border-gray-200 focus:border-emerald-600 focus:ring-4 focus:ring-emerald-100 text-sm text-gray-900 transition-all outline-none"
                           placeholder="Min 8 chars, 1 uppercase, 1 number"
                         />
                         <button
@@ -932,7 +906,7 @@ export function AuthModal({
                           required
                           value={confirmNewPassword}
                           onChange={(e) => setConfirmNewPassword(e.target.value)}
-                          className="w-full pl-10 pr-10 py-2.5 rounded-xl border border-gray-200 focus:border-lime-600 focus:ring-4 focus:ring-lime-100 text-sm text-gray-900 transition-all outline-none"
+                          className="w-full pl-10 pr-10 py-2.5 rounded-xl border border-gray-200 focus:border-emerald-600 focus:ring-4 focus:ring-emerald-100 text-sm text-gray-900 transition-all outline-none"
                           placeholder="Re-enter new password"
                         />
                         <button
@@ -949,7 +923,7 @@ export function AuthModal({
                       id="forgot-submit-btn"
                       type="submit"
                       disabled={isLoading}
-                      className="w-full py-3 px-4 rounded-xl bg-lime-600 hover:bg-lime-700 text-white font-semibold text-sm shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                      className="w-full py-3 px-4 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-semibold text-sm shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
                     >
                       {isLoading ? (
                         <>
@@ -978,7 +952,7 @@ export function AuthModal({
                 {/* RESET SUCCESS */}
                 {loginStep === 'RESET_SUCCESS' && (
                   <div className="py-6 text-center space-y-4 animate-in fade-in duration-300">
-                    <div className="w-16 h-16 bg-lime-100 text-lime-700 rounded-full flex items-center justify-center mx-auto">
+                    <div className="w-16 h-16 bg-emerald-100 text-emerald-700 rounded-full flex items-center justify-center mx-auto">
                       <CheckCircle2 className="w-8 h-8" />
                     </div>
                     <div>
@@ -989,7 +963,7 @@ export function AuthModal({
                     </div>
                     <button
                       onClick={() => setLoginStep('LOGIN_FORM')}
-                      className="w-full py-3 px-4 rounded-xl bg-lime-600 hover:bg-lime-700 text-white font-semibold text-sm shadow-md transition-all cursor-pointer"
+                      className="w-full py-3 px-4 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-semibold text-sm shadow-md transition-all cursor-pointer"
                     >
                       Log In Now
                     </button>
@@ -999,67 +973,266 @@ export function AuthModal({
             )}
 
             {/* Quick Demo Credentials */}
-            <div className="pt-2">
+            <div className="pt-3">
               <div className="p-3 bg-gray-50 rounded-xl border border-gray-100 flex items-center justify-between text-xs">
                 <span className="text-gray-500 font-medium">Quick Demo Autofill:</span>
                 <div className="flex items-center gap-2">
                   <button
                     type="button"
                     onClick={() => handleQuickDemo('learner')}
-                    className="px-2.5 py-1 bg-white hover:bg-lime-50 text-gray-700 hover:text-lime-700 border border-gray-200 hover:border-lime-200 rounded-lg font-medium transition-colors cursor-pointer"
+                    className="px-2.5 py-1 bg-white hover:bg-emerald-50 text-gray-700 hover:text-emerald-700 border border-gray-200 hover:border-emerald-200 rounded-lg font-medium transition-colors cursor-pointer"
                   >
                     Learner
                   </button>
                   <button
                     type="button"
                     onClick={() => handleQuickDemo('pro')}
-                    className="px-2.5 py-1 bg-white hover:bg-lime-50 text-gray-700 hover:text-lime-700 border border-gray-200 hover:border-lime-200 rounded-lg font-medium transition-colors cursor-pointer"
+                    className="px-2.5 py-1 bg-white hover:bg-emerald-50 text-gray-700 hover:text-emerald-700 border border-gray-200 hover:border-emerald-200 rounded-lg font-medium transition-colors cursor-pointer"
                   >
                     Pro Student
                   </button>
                 </div>
               </div>
             </div>
+
+            {/* Switch between Login & Signup */}
+            <div className="mt-5 pt-4 border-t border-gray-100 text-center text-xs sm:text-sm text-gray-600">
+              {mode === 'signup' ? (
+                <p>
+                  Already have an account?{' '}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setError(null);
+                      setSuccessBanner(null);
+                      setMode('login');
+                      setLoginStep('LOGIN_FORM');
+                    }}
+                    className="text-emerald-700 font-bold hover:underline cursor-pointer ml-1"
+                  >
+                    Sign in
+                  </button>
+                </p>
+              ) : (
+                <p>
+                  Don't have an account?{' '}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setError(null);
+                      setSuccessBanner(null);
+                      setMode('signup');
+                      setSignupStep('SIGNUP_FORM');
+                    }}
+                    className="text-emerald-700 font-bold hover:underline cursor-pointer ml-1"
+                  >
+                    Sign up
+                  </button>
+                </p>
+              )}
+            </div>
           </div>
 
-          {/* Modal Footer / Switch between Login & Signup */}
-          <div className="p-4 sm:px-8 border-t border-gray-100 bg-gray-50/60 flex items-center justify-center text-xs sm:text-sm text-gray-600">
-            {mode === 'signup' ? (
-              <p>
-                Already have an account?{' '}
-                <button
-                  type="button"
-                  onClick={() => {
-                    setError(null);
-                    setSuccessBanner(null);
-                    setMode('login');
-                    setLoginStep('LOGIN_FORM');
-                  }}
-                  className="text-lime-700 font-bold hover:underline cursor-pointer"
-                >
-                  Log In
-                </button>
-              </p>
-            ) : (
-              <p>
-                Don't have an account?{' '}
-                <button
-                  type="button"
-                  onClick={() => {
-                    setError(null);
-                    setSuccessBanner(null);
-                    setMode('signup');
-                    setSignupStep('SIGNUP_FORM');
-                  }}
-                  className="text-lime-700 font-bold hover:underline cursor-pointer"
-                >
-                  Sign Up
-                </button>
-              </p>
-            )}
+          {/* ================================================================= */}
+          {/* RIGHT SECTION: MODERN WELCOME PANEL */}
+          {/* ================================================================= */}
+          <div className="w-full md:w-[46%] lg:w-[45%] bg-gradient-to-br from-[#064e3b] via-[#047857] to-[#022c22] text-white p-6 sm:p-8 lg:p-10 flex flex-col justify-between relative overflow-hidden">
+            {/* Background Glow Accents */}
+            <div className="absolute -top-20 -right-20 w-64 h-64 rounded-full bg-emerald-400/20 blur-3xl pointer-events-none" />
+            <div className="absolute -bottom-20 -left-20 w-64 h-64 rounded-full bg-teal-400/15 blur-3xl pointer-events-none" />
+
+            {/* Top Branding Badge */}
+            <div className="relative z-10">
+              <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/10 backdrop-blur-md border border-white/15 text-emerald-200 text-xs font-medium">
+                <Sparkles className="w-3.5 h-3.5 text-emerald-300" />
+                <span>InGage LMS • Career Platform</span>
+              </div>
+            </div>
+
+            {/* Middle Welcome Content */}
+            <div className="relative z-10 my-8 sm:my-10 space-y-6">
+              {mode === 'login' ? (
+                <>
+                  <div>
+                    <h2 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">
+                      Welcome Back!
+                    </h2>
+                    <p className="text-sm text-emerald-100/90 leading-relaxed mt-3">
+                      Continue your learning journey with InGage. Build skills, explore career paths, and grow your professional future.
+                    </p>
+                  </div>
+
+                  <div className="space-y-3.5 pt-2">
+                    <div className="flex items-start gap-3">
+                      <div className="w-7 h-7 rounded-lg bg-emerald-500/20 border border-emerald-400/30 flex items-center justify-center shrink-0 mt-0.5">
+                        <GraduationCap className="w-4 h-4 text-emerald-200" />
+                      </div>
+                      <div>
+                        <h4 className="text-xs sm:text-sm font-semibold text-white">100+ Hands-on Programs</h4>
+                        <p className="text-[11px] sm:text-xs text-emerald-100/70">Industry-aligned curriculums mapped to modern tech roles.</p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-start gap-3">
+                      <div className="w-7 h-7 rounded-lg bg-emerald-500/20 border border-emerald-400/30 flex items-center justify-center shrink-0 mt-0.5">
+                        <CheckCircle className="w-4 h-4 text-emerald-200" />
+                      </div>
+                      <div>
+                        <h4 className="text-xs sm:text-sm font-semibold text-white">Verified Certifications</h4>
+                        <p className="text-[11px] sm:text-xs text-emerald-100/70">Showcase accredited proof of skill to recruiters and peers.</p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-start gap-3">
+                      <div className="w-7 h-7 rounded-lg bg-emerald-500/20 border border-emerald-400/30 flex items-center justify-center shrink-0 mt-0.5">
+                        <Briefcase className="w-4 h-4 text-emerald-200" />
+                      </div>
+                      <div>
+                        <h4 className="text-xs sm:text-sm font-semibold text-white">Direct Career Pathways</h4>
+                        <p className="text-[11px] sm:text-xs text-emerald-100/70">Fast-track interview pipelines with hiring partners.</p>
+                      </div>
+                    </div>
+                  </div>
+                </>
+              ) : loginStep === 'FORGOT_PASSWORD' ? (
+                <>
+                  <div>
+                    <h2 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">
+                      Secure Your Account
+                    </h2>
+                    <p className="text-sm text-emerald-100/90 leading-relaxed mt-3">
+                      Keep your learning progress and career profile safe. Set a new password to regain access.
+                    </p>
+                  </div>
+
+                  <div className="space-y-3.5 pt-2">
+                    <div className="flex items-start gap-3">
+                      <div className="w-7 h-7 rounded-lg bg-emerald-500/20 border border-emerald-400/30 flex items-center justify-center shrink-0 mt-0.5">
+                        <ShieldCheck className="w-4 h-4 text-emerald-200" />
+                      </div>
+                      <div>
+                        <h4 className="text-xs sm:text-sm font-semibold text-white">End-to-End Encryption</h4>
+                        <p className="text-[11px] sm:text-xs text-emerald-100/70">Your credentials and account history remain completely secure.</p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-start gap-3">
+                      <div className="w-7 h-7 rounded-lg bg-emerald-500/20 border border-emerald-400/30 flex items-center justify-center shrink-0 mt-0.5">
+                        <CheckCircle className="w-4 h-4 text-emerald-200" />
+                      </div>
+                      <div>
+                        <h4 className="text-xs sm:text-sm font-semibold text-white">Instant Recovery</h4>
+                        <p className="text-[11px] sm:text-xs text-emerald-100/70">Seamlessly resume all active modules right after resetting.</p>
+                      </div>
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div>
+                    <h2 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">
+                      Start Learning
+                    </h2>
+                    <p className="text-sm text-emerald-100/90 leading-relaxed mt-3">
+                      Build your skills with InGage LMS. Gain industry-recognized credentials and accelerate your tech career.
+                    </p>
+                  </div>
+
+                  <div className="space-y-3.5 pt-2">
+                    <div className="flex items-start gap-3">
+                      <div className="w-7 h-7 rounded-lg bg-emerald-500/20 border border-emerald-400/30 flex items-center justify-center shrink-0 mt-0.5">
+                        <GraduationCap className="w-4 h-4 text-emerald-200" />
+                      </div>
+                      <div>
+                        <h4 className="text-xs sm:text-sm font-semibold text-white">Learn In-Demand Roles</h4>
+                        <p className="text-[11px] sm:text-xs text-emerald-100/70">Full Stack, Cloud Architect, AI & DevOps career roadmaps.</p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-start gap-3">
+                      <div className="w-7 h-7 rounded-lg bg-emerald-500/20 border border-emerald-400/30 flex items-center justify-center shrink-0 mt-0.5">
+                        <Briefcase className="w-4 h-4 text-emerald-200" />
+                      </div>
+                      <div>
+                        <h4 className="text-xs sm:text-sm font-semibold text-white">Portfolio Proof of Work</h4>
+                        <p className="text-[11px] sm:text-xs text-emerald-100/70">Build production-grade projects evaluated by industry mentors.</p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-start gap-3">
+                      <div className="w-7 h-7 rounded-lg bg-emerald-500/20 border border-emerald-400/30 flex items-center justify-center shrink-0 mt-0.5">
+                        <CheckCircle className="w-4 h-4 text-emerald-200" />
+                      </div>
+                      <div>
+                        <h4 className="text-xs sm:text-sm font-semibold text-white">Recognized Credentials</h4>
+                        <p className="text-[11px] sm:text-xs text-emerald-100/70">Earn shareable certificates to highlight on your resume and LinkedIn.</p>
+                      </div>
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
+
+            {/* Bottom Trust Endorsement */}
+            <div className="relative z-10 pt-4 border-t border-white/10 flex items-center justify-between">
+              <div className="flex items-center gap-1 text-amber-300">
+                {[...Array(5)].map((_, i) => (
+                  <Star key={i} className="w-3.5 h-3.5 fill-current" />
+                ))}
+              </div>
+              <span className="text-[11px] sm:text-xs text-emerald-200/80 font-medium">
+                10,000+ Learners Enrolled
+              </span>
+            </div>
           </div>
         </div>
       </div>
+
+      {/* Terms & Privacy Policy Modal */}
+      {showTermsModal && (
+        <div
+          className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-black/70 backdrop-blur-xs"
+          onClick={() => setShowTermsModal(false)}
+        >
+          <div
+            className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl space-y-4 max-h-[80vh] overflow-y-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b pb-3">
+              <h3 className="text-lg font-bold text-gray-900">Terms & Privacy Policy</h3>
+              <button
+                onClick={() => setShowTermsModal(false)}
+                className="text-gray-400 hover:text-gray-600 p-1 rounded-lg hover:bg-gray-100"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="text-xs text-gray-600 space-y-3 leading-relaxed">
+              <p>
+                Welcome to InGage LMS. By creating an account or logging in, you agree to comply with our Terms of Service, Honor Code, and Privacy Policy.
+              </p>
+              <h4 className="font-bold text-gray-800 text-sm">1. Account Responsibility</h4>
+              <p>
+                You are responsible for maintaining the confidentiality of your account credentials and for all activities that occur under your account.
+              </p>
+              <h4 className="font-bold text-gray-800 text-sm">2. Learning & Certifications</h4>
+              <p>
+                Course certifications require completion of assigned modules and projects according to our academic integrity guidelines.
+              </p>
+              <h4 className="font-bold text-gray-800 text-sm">3. Privacy</h4>
+              <p>
+                We value your privacy. Your personal information is encrypted and never sold to third-party advertisers.
+              </p>
+            </div>
+            <button
+              onClick={() => setShowTermsModal(false)}
+              className="w-full py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs"
+            >
+              I Understand & Close
+            </button>
+          </div>
+        </div>
+      )}
     </>
   );
 }
