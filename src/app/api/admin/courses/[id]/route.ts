@@ -50,7 +50,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
       return NextResponse.json({ error: "Course not found" }, { status: 404 });
     }
 
-        const serialized: any = serializeData(course);
+    const serialized: any = serializeData(course);
     if (serialized.course_sections) {
       serialized.sections = serialized.course_sections.map((sec: any) => ({
         id: Number(sec.id),
@@ -82,6 +82,12 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
         })),
       }));
     }
+
+    serialized.shortDescription = serialized.short_description || serialized.shortDescription || '';
+    serialized.discountType = serialized.discount_type || serialized.discountType || 'NONE';
+    serialized.discountValue = serialized.discount_value != null ? Number(serialized.discount_value) : (serialized.discountValue != null ? Number(serialized.discountValue) : 0);
+    serialized.finalPrice = serialized.final_price != null ? Number(serialized.final_price) : (serialized.finalPrice != null ? Number(serialized.finalPrice) : serialized.price);
+
     return NextResponse.json(serialized);
   } catch (error: any) {
     console.error("Get course error:", error);
@@ -104,7 +110,7 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
       updated_at: new Date(),
     };
 
-    if (body.title !== undefined) data.title = body.title;
+    if (body.title !== undefined) data.title = body.title.trim();
     if (body.category !== undefined) data.category = body.category;
     if (body.level !== undefined) data.level = body.level;
     if (body.price !== undefined) data.price = Number(body.price);
@@ -114,23 +120,51 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
     if (body.short_description !== undefined) data.short_description = body.short_description;
     if (body.shortDescription !== undefined) data.short_description = body.shortDescription;
     if (body.thumbnail !== undefined) data.thumbnail = body.thumbnail;
+    if (body.banner !== undefined) data.banner = body.banner;
+    if (body.slug !== undefined) data.slug = body.slug.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+    if (body.language !== undefined) data.language = body.language;
     if (body.duration !== undefined) data.duration = body.duration;
     if (body.instructor !== undefined) data.instructor = body.instructor;
+    if (body.currency !== undefined) data.currency = body.currency;
+    if (body.discountType !== undefined) data.discount_type = body.discountType;
+    if (body.discount_type !== undefined) data.discount_type = body.discount_type;
+    if (body.discountValue !== undefined) data.discount_value = body.discountValue !== null ? Number(body.discountValue) : null;
+    if (body.discount_value !== undefined) data.discount_value = body.discount_value !== null ? Number(body.discount_value) : null;
+    
     if (body.published !== undefined) {
-      data.published = body.published;
+      data.published = Boolean(body.published);
       data.status = body.published ? "PUBLISHED" : "DRAFT";
     }
     if (body.status !== undefined) data.status = body.status;
+
+    // Recalculate final_price if not explicitly set and price is updated
+    if (data.final_price === undefined && data.price !== undefined) {
+      const discType = data.discount_type;
+      const discVal = data.discount_value;
+      if (discType === 'PERCENTAGE' && discVal) {
+        data.final_price = Math.max(0, Math.round((data.price - (data.price * discVal) / 100) * 100) / 100);
+      } else if (discType === 'FIXED_AMOUNT' || discType === 'FLAT') {
+        data.final_price = Math.max(0, data.price - (discVal || 0));
+      } else {
+        data.final_price = data.price;
+      }
+    }
 
     const updated = await prisma.courses.update({
       where: { id: courseId },
       data,
     });
 
-    return NextResponse.json(serializeData(updated));
+    const serialized: any = serializeData(updated);
+    serialized.shortDescription = serialized.short_description || serialized.shortDescription || "";
+    serialized.discountType = serialized.discount_type || serialized.discountType || "NONE";
+    serialized.discountValue = serialized.discount_value != null ? Number(serialized.discount_value) : 0;
+    serialized.finalPrice = serialized.final_price != null ? Number(serialized.final_price) : serialized.price;
+
+    return NextResponse.json(serialized);
   } catch (error: any) {
     console.error("Update course error:", error);
-    return NextResponse.json({ error: "Failed to update course" }, { status: 500 });
+    return NextResponse.json({ error: "Failed to update course: " + (error?.message || error) }, { status: 500 });
   }
 }
 

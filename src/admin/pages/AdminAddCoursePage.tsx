@@ -740,6 +740,17 @@ export const AdminAddCoursePage: React.FC<AdminAddCoursePageProps> = ({
   const [price, setPrice] = useState<number>(1999);
   const [discountType, setDiscountType] = useState<'PERCENTAGE' | 'FIXED_AMOUNT'>('PERCENTAGE');
   const [discountValue, setDiscountValue] = useState<number>(20);
+  const [courseStatus, setCourseStatus] = useState<string>('DRAFT');
+  const [isPublishedCourse, setIsPublishedCourse] = useState<boolean>(false);
+  const [localToast, setLocalToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+
+  const triggerToast = (msg: string, type: 'success' | 'error' = 'success') => {
+    if (onShowToast) onShowToast(msg);
+    setLocalToast({ message: msg, type });
+    setTimeout(() => {
+      setLocalToast((prev) => (prev?.message === msg ? null : prev));
+    }, 4000);
+  };
 
   // Categories list
   const [categories, setCategories] = useState<any[]>([]);
@@ -937,7 +948,7 @@ export const AdminAddCoursePage: React.FC<AdminAddCoursePageProps> = ({
           setTitle(data.title || '');
           setSlug(data.slug || '');
           setIsManualSlug(Boolean(data.slug));
-          setShortDescription(data.shortDescription || '');
+          setShortDescription(data.shortDescription || data.short_description || '');
           setDescription(data.description || '');
           setCategory(data.category || 'Data Science & AI');
           setLevel(data.level || 'Intermediate');
@@ -948,13 +959,16 @@ export const AdminAddCoursePage: React.FC<AdminAddCoursePageProps> = ({
           setBanner(data.banner || '');
           setPrice(data.price || 0);
           setIsFree(data.price === 0);
-          if (data.discountType) setDiscountType(data.discountType);
-          if (data.discountValue) setDiscountValue(data.discountValue);
+          if (data.discountType || data.discount_type) setDiscountType((data.discountType || data.discount_type) as any);
+          if (data.discountValue !== undefined || data.discount_value !== undefined) setDiscountValue(Number(data.discountValue ?? data.discount_value ?? 0));
+          if (data.status) setCourseStatus(data.status);
+          if (data.published !== undefined) setIsPublishedCourse(Boolean(data.published));
           setSections(data.sections || []);
           setSavedCourseId(courseId);
         })
         .catch((err) => {
           console.error('Failed to load course details', err);
+          if (typeof triggerToast === 'function') triggerToast('Failed to load course details.', 'error');
         });
     }
   }, [courseId]);
@@ -1037,7 +1051,8 @@ export const AdminAddCoursePage: React.FC<AdminAddCoursePageProps> = ({
         price: isFree ? 0 : price,
         discountType: isFree ? null : discountType,
         discountValue: isFree ? 0 : discountValue,
-        status: 'DRAFT',
+        status: isEditing ? (courseStatus || 'PUBLISHED') : 'DRAFT',
+        published: isEditing ? isPublishedCourse : false,
       };
 
       let result;
@@ -1048,9 +1063,18 @@ export const AdminAddCoursePage: React.FC<AdminAddCoursePageProps> = ({
         setSavedCourseId(result.id);
       }
 
-      if (onShowToast) onShowToast('Course draft saved successfully!');
-    } catch {
-      if (onShowToast) onShowToast('Failed to save draft.');
+      if (typeof triggerToast === 'function') {
+        triggerToast(isEditing ? 'Course updated successfully!' : 'Course draft saved successfully!');
+      } else if (onShowToast) {
+        onShowToast(isEditing ? 'Course updated successfully!' : 'Course draft saved successfully!');
+      }
+    } catch (err: any) {
+      console.error('Save course error:', err);
+      if (typeof triggerToast === 'function') {
+        triggerToast(isEditing ? 'Failed to update course.' : 'Failed to save draft.', 'error');
+      } else if (onShowToast) {
+        onShowToast('Failed to save course.');
+      }
     } finally {
       setSaving(false);
     }
@@ -1532,10 +1556,11 @@ export const AdminAddCoursePage: React.FC<AdminAddCoursePageProps> = ({
           <button
             onClick={handleSaveDraft}
             disabled={saving}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white hover:bg-slate-50 text-slate-700 text-sm font-semibold border border-slate-200 transition-all cursor-pointer shadow-xs"
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white hover:bg-slate-50 text-slate-700 text-sm font-semibold border border-slate-200 transition-all cursor-pointer shadow-xs disabled:opacity-60"
+            title={isEditing ? 'Update course details & pricing' : 'Save draft'}
           >
-            <Save className="w-4 h-4" />
-            <span>Save Draft</span>
+            {saving ? <Loader2 className="w-4 h-4 animate-spin text-green-600" /> : <Save className="w-4 h-4 text-slate-600" />}
+            <span>{saving ? 'Saving...' : (isEditing ? 'Update Course' : 'Save Draft')}</span>
           </button>
 
           <button
@@ -3569,6 +3594,28 @@ export const AdminAddCoursePage: React.FC<AdminAddCoursePageProps> = ({
         </div>
       )}
 
+      {/* Floating Toast Notification */}
+      {localToast && (
+        <div
+          className={`fixed bottom-6 right-6 z-50 flex items-center gap-2.5 px-4 py-3 rounded-xl shadow-xl text-sm font-semibold transition-all duration-300 animate-in fade-in slide-in-from-bottom-5 ${
+            localToast.type === 'error' ? 'bg-rose-600 text-white' : 'bg-slate-900 text-white border border-slate-700'
+          }`}
+        >
+          {localToast.type === 'error' ? (
+            <AlertCircle className="w-4 h-4 text-rose-300 shrink-0" />
+          ) : (
+            <CheckCircle2 className="w-4 h-4 text-green-400 shrink-0" />
+          )}
+          <span>{localToast.message}</span>
+          <button
+            onClick={() => setLocalToast(null)}
+            className="ml-2 hover:opacity-75 cursor-pointer p-0.5"
+            aria-label="Dismiss"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
     </div>
   );
 };

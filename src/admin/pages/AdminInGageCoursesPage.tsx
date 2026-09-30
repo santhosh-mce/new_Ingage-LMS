@@ -452,7 +452,7 @@ export const AdminInGageCoursesPage: React.FC<AdminInGageCoursesPageProps> = ({
 
                     {/* Edit Button */}
                     <button
-                      onClick={() => onNavigate(`/admin/courses/${course.id}/analytics`)}
+                      onClick={() => onNavigate(`/admin/courses/${course.id}/edit`)}
                       className="px-2.5 py-1.5 rounded-lg bg-white hover:bg-green-50 text-slate-700 hover:text-green-700 text-xs font-semibold border border-slate-200 hover:border-green-200 transition-colors flex items-center gap-1 cursor-pointer"
                       title="Edit course details & curriculum"
                     >
