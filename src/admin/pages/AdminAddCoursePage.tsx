@@ -27,6 +27,7 @@ import {
   FileText,
   HelpCircle,
   Upload,
+  Loader2,
   Layers,
   Sparkles,
   AlertCircle,
@@ -241,7 +242,7 @@ export const AdminAddCoursePage: React.FC<AdminAddCoursePageProps> = ({
   };
 
   // Module modal extended fields
-  const [sectionStatus, setSectionStatus] = useState<'PUBLISHED' | 'DRAFT'>('PUBLISHED');
+  const [sectionStatus, setSectionStatus] = useState<'PUBLISHED' | 'DRAFT'>('DRAFT');
   const [sectionIsFreePreview, setSectionIsFreePreview] = useState(false);
   const [sectionThumbnail, setSectionThumbnail] = useState('');
 
@@ -387,7 +388,7 @@ export const AdminAddCoursePage: React.FC<AdminAddCoursePageProps> = ({
       videoSource: 'UPLOAD',
       videoFile: null,
       videoFileName: '',
-      youtubeUrl: '',
+            youtubeUrl: '',
       youtubeVideoId: '',
       videoUploadPercent: 0,
       videoUploadStatus: 'idle',
@@ -512,7 +513,7 @@ export const AdminAddCoursePage: React.FC<AdminAddCoursePageProps> = ({
       ...prev,
       videoFile: file,
       videoFileName: file.name,
-      videoTitle: prev.videoTitle.trim() ? prev.videoTitle : file.name.replace(/\.[^/.]+$/, '').replace(/[-_]+/g, ' ').trim(),
+            videoTitle: prev.videoTitle.trim() ? prev.videoTitle : file.name.replace(/\.[^/.]+$/, '').replace(/[-_]+/g, ' ').trim(),
       title: prev.title.trim() ? prev.title : file.name.replace(/\.[^/.]+$/, '').replace(/[-_]+/g, ' ').trim(),
       videoUploadStatus: 'uploading',
       videoUploadPercent: 20,
@@ -750,6 +751,26 @@ export const AdminAddCoursePage: React.FC<AdminAddCoursePageProps> = ({
   const [editingSection, setEditingSection] = useState<any | null>(null);
   const [editSectionTitle, setEditSectionTitle] = useState('');
   const [editSectionDesc, setEditSectionDesc] = useState('');
+  const [editSectionStatus, setEditSectionStatus] = useState<'PUBLISHED' | 'DRAFT'>('DRAFT');
+  const [editSectionIsFreePreview, setEditSectionIsFreePreview] = useState(false);
+  const [deletingSectionId, setDeletingSectionId] = useState<number | null>(null);
+  const [adminPreviewVideo, setAdminPreviewVideo] = useState<{ url: string; title: string } | null>(null);
+
+  const getSectionMeta = (sec: any) => {
+    try {
+      if (sec.description && typeof sec.description === 'string' && sec.description.startsWith('{')) {
+        const parsed = JSON.parse(sec.description);
+        return {
+          status: (parsed.status || 'DRAFT') as 'PUBLISHED' | 'DRAFT',
+          freePreview: Boolean(parsed.freePreview),
+        };
+      }
+    } catch {}
+    return {
+      status: ((sec.status as string) || 'DRAFT') as 'PUBLISHED' | 'DRAFT',
+      freePreview: Boolean(sec.freePreview || sec.isFreePreview),
+    };
+  };
 
   // Lesson edit modal
   const [editingLesson, setEditingLesson] = useState<{ sectionId: number; lesson: any } | null>(null);
@@ -1117,17 +1138,32 @@ export const AdminAddCoursePage: React.FC<AdminAddCoursePageProps> = ({
     }
 
     try {
+      const payloadDesc = JSON.stringify({
+        status: 'DRAFT',
+        freePreview: Boolean(sectionIsFreePreview),
+      });
       const newSec = await addCourseSection(activeId!, {
         title: newSectionTitle.trim(),
-        description: newSectionDesc.trim(),
+        description: payloadDesc,
       });
-      setSections([...sections, { ...newSec, lessons: [] }]);
+      setSections([
+        ...sections,
+        {
+          ...newSec,
+          description: payloadDesc,
+          status: 'DRAFT',
+          freePreview: Boolean(sectionIsFreePreview),
+          lessons: [],
+        },
+      ]);
       setNewSectionTitle('');
       setNewSectionDesc('');
+      setSectionStatus('DRAFT');
+      setSectionIsFreePreview(false);
       setIsAddingSection(false);
-      if (onShowToast) onShowToast('Section added!');
+      if (onShowToast) onShowToast('Module created as Draft!');
     } catch {
-      if (onShowToast) onShowToast('Failed to add section.');
+      if (onShowToast) onShowToast('Failed to add module.');
     }
   };
 
@@ -1383,23 +1419,39 @@ export const AdminAddCoursePage: React.FC<AdminAddCoursePageProps> = ({
   const handleOpenEditSection = (sec: any) => {
     setEditingSection(sec);
     setEditSectionTitle(sec.title || '');
-    setEditSectionDesc(sec.description || '');
+    const meta = getSectionMeta(sec);
+    setEditSectionStatus(meta.status);
+    setEditSectionIsFreePreview(meta.freePreview);
   };
 
   const handleSaveEditSection = async () => {
     if (!editingSection || !editSectionTitle.trim()) return;
     try {
+      const payloadDesc = JSON.stringify({
+        status: editSectionStatus,
+        freePreview: editSectionIsFreePreview,
+      });
       const updated = await updateCourseSection(editingSection.id, {
         title: editSectionTitle.trim(),
-        description: editSectionDesc.trim(),
+        description: payloadDesc,
       });
       setSections(
-        sections.map((s) => (s.id === editingSection.id ? { ...s, title: updated.title, description: updated.description } : s))
+        sections.map((s) =>
+          s.id === editingSection.id
+            ? {
+                ...s,
+                title: updated.title,
+                description: payloadDesc,
+                status: editSectionStatus,
+                freePreview: editSectionIsFreePreview,
+              }
+            : s
+        )
       );
       setEditingSection(null);
-      if (onShowToast) onShowToast('Section updated successfully!');
+      if (onShowToast) onShowToast('Module updated successfully!');
     } catch {
-      if (onShowToast) onShowToast('Failed to update section.');
+      if (onShowToast) onShowToast('Failed to update module.');
     }
   };
 
@@ -1822,7 +1874,7 @@ export const AdminAddCoursePage: React.FC<AdminAddCoursePageProps> = ({
                 }
                 setNewSectionTitle('');
                 setNewSectionDesc('');
-                setSectionStatus('PUBLISHED');
+                setSectionStatus('DRAFT');
                 setSectionIsFreePreview(false);
                 setIsAddingSection(true);
               }}
@@ -1882,7 +1934,7 @@ export const AdminAddCoursePage: React.FC<AdminAddCoursePageProps> = ({
                   }
                   setNewSectionTitle('');
                   setNewSectionDesc('');
-                  setSectionStatus('PUBLISHED');
+                  setSectionStatus('DRAFT');
                   setSectionIsFreePreview(false);
                   setIsAddingSection(true);
                 }}
@@ -1917,20 +1969,31 @@ export const AdminAddCoursePage: React.FC<AdminAddCoursePageProps> = ({
                       <span className="w-7 h-7 rounded-lg bg-green-600 text-white font-bold text-xs flex items-center justify-center shrink-0 shadow-2xs">
                         {secIdx + 1}
                       </span>
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <span className="text-[11px] font-bold uppercase tracking-wider text-green-800">
-                            Module {secIdx + 1}
-                          </span>
-                          <span className="text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider bg-emerald-100 text-emerald-800 border border-emerald-200">
-                            Published
-                          </span>
-                        </div>
-                        <h3 className="text-sm sm:text-base font-bold text-slate-900">{sec.title}</h3>
-                        {sec.description && (
-                          <p className="text-[11px] text-slate-500 mt-0.5">{sec.description}</p>
-                        )}
-                      </div>
+                      {(() => {
+                        const secMeta = getSectionMeta(sec);
+                        return (
+                          <div>
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="text-[11px] font-bold uppercase tracking-wider text-green-800">
+                                Module {secIdx + 1}
+                              </span>
+                              <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider border ${
+                                secMeta.status === 'PUBLISHED'
+                                  ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                  : 'bg-amber-50 text-amber-700 border-amber-200'
+                              }`}>
+                                {secMeta.status === 'PUBLISHED' ? 'Published' : 'Draft'}
+                              </span>
+                              {secMeta.freePreview && (
+                                <span className="text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider bg-sky-50 text-sky-700 border border-sky-200">
+                                  Free Preview
+                                </span>
+                              )}
+                            </div>
+                            <h3 className="text-sm sm:text-base font-bold text-slate-900 mt-0.5">{sec.title}</h3>
+                          </div>
+                        );
+                      })()}
                     </div>
 
                     <div className="flex items-center flex-wrap gap-1.5 self-end sm:self-auto">
@@ -1971,22 +2034,34 @@ export const AdminAddCoursePage: React.FC<AdminAddCoursePageProps> = ({
                         <Edit2 className="w-3.5 h-3.5" />
                       </button>
 
-                      {/* + Add Lesson Button */}
+                      {/* + Add Video Button */}
                       <button
                         type="button"
-                        onClick={() => handleOpenAddLessonModal(sec)}
-                        className="flex items-center gap-1 px-3 py-1.5 rounded-xl bg-green-600 hover:bg-green-700 text-white text-xs font-bold shadow-xs transition-colors cursor-pointer"
+                        onClick={() => handleOpenAddLessonModal(sec, 'VIDEO')}
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-green-600 hover:bg-green-700 text-white text-xs font-bold shadow-xs transition-colors cursor-pointer"
+                        title="Upload Video directly into this module"
                       >
-                        <Plus className="w-3.5 h-3.5" />
-                        <span>Add Lesson</span>
+                        <Video className="w-3.5 h-3.5" />
+                        <span>+ Add Video</span>
+                      </button>
+
+                      {/* + Add Content Button */}
+                      <button
+                        type="button"
+                        onClick={() => handleOpenAddLessonModal(sec, 'TEXT')}
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 text-xs font-bold transition-colors cursor-pointer"
+                        title="Add Reading / Text Content to this module"
+                      >
+                        <FileText className="w-3.5 h-3.5" />
+                        <span>+ Add Content</span>
                       </button>
 
                       {/* Delete Section */}
                       <button
                         type="button"
-                        onClick={() => handleDeleteSection(sec.id)}
+                        onClick={() => setDeletingSectionId(sec.id)}
                         className="p-1.5 text-slate-400 hover:text-rose-600 transition-colors cursor-pointer"
-                        title="Delete Section"
+                        title="Delete Module"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>
@@ -2007,17 +2082,27 @@ export const AdminAddCoursePage: React.FC<AdminAddCoursePageProps> = ({
                   {isExpanded && (
                     <div className="space-y-2.5">
                       {!sec.lessons || sec.lessons.length === 0 ? (
-                        <div className="py-8 text-center text-xs text-slate-400 border border-dashed border-slate-200 rounded-xl space-y-2 bg-white">
-                          <p className="font-semibold text-slate-600">No lessons added yet.</p>
-                          <p className="text-[11px] text-slate-400">Click below to create video, text, PDF, quiz, or assignment lessons.</p>
-                          <button
-                            type="button"
-                            onClick={() => handleOpenAddLessonModal(sec)}
-                            className="inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-green-600 hover:bg-green-700 text-white rounded-lg text-xs font-bold shadow-2xs transition-colors cursor-pointer mt-1"
-                          >
-                            <Plus className="w-3.5 h-3.5" />
-                            <span>+ Add Lesson</span>
-                          </button>
+                        <div className="py-8 text-center text-xs text-slate-400 border border-dashed border-slate-200 rounded-xl space-y-2.5 bg-white p-6">
+                          <p className="font-semibold text-slate-600 text-sm">No lessons added yet.</p>
+                          <p className="text-[11px] text-slate-400">Click below to upload a course video or add reading material directly to this module.</p>
+                          <div className="flex items-center justify-center gap-2.5 pt-1">
+                            <button
+                              type="button"
+                              onClick={() => handleOpenAddLessonModal(sec, 'VIDEO')}
+                              className="inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-green-600 hover:bg-green-700 text-white rounded-xl text-xs font-bold shadow-2xs transition-colors cursor-pointer"
+                            >
+                              <Video className="w-3.5 h-3.5" />
+                              <span>+ Add Video</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleOpenAddLessonModal(sec, 'TEXT')}
+                              className="inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 rounded-xl text-xs font-bold transition-colors cursor-pointer"
+                            >
+                              <FileText className="w-3.5 h-3.5" />
+                              <span>+ Add Content</span>
+                            </button>
+                          </div>
                         </div>
                       ) : (
                         sec.lessons.map((les: any, lesIdx: number) => {
@@ -2063,18 +2148,31 @@ export const AdminAddCoursePage: React.FC<AdminAddCoursePageProps> = ({
                                   </div>
                                 )}
 
-                                <div className="min-w-0 flex items-center gap-2 flex-wrap">
-                                  <span className="font-semibold text-slate-900 truncate">
-                                    {les.title}
-                                  </span>
-                                  <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 uppercase shrink-0">
-                                    {les.lessonType || 'VIDEO'}
-                                  </span>
-                                  {les.freePreview && (
-                                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-green-100 text-green-800 border border-green-200 uppercase font-bold shrink-0">
-                                      Free Preview
+                                <div className="min-w-0">
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    <span className="font-semibold text-slate-900 truncate">
+                                      {les.title}
                                     </span>
-                                  )}
+                                    <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 uppercase shrink-0">
+                                      {les.lessonType || 'VIDEO'}
+                                    </span>
+                                    {les.freePreview && (
+                                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-green-100 text-green-800 border border-green-200 uppercase font-bold shrink-0">
+                                        Free Preview
+                                      </span>
+                                    )}
+                                  </div>
+                                  <div className="text-[11px] text-slate-400 flex items-center gap-1.5 mt-0.5 font-medium">
+                                    <span>{les.lessonType === 'VIDEO' ? 'Video' : les.lessonType === 'TEXT' ? 'Reading' : les.lessonType}</span>
+                                    <span>•</span>
+                                    {les.lessonType === 'VIDEO' && (
+                                      <>
+                                        <span className="font-mono text-slate-500 font-semibold">{displayDuration}</span>
+                                        <span>•</span>
+                                      </>
+                                    )}
+                                    <span className="text-slate-500 font-medium">{les.status || 'Draft'}</span>
+                                  </div>
                                 </div>
                               </div>
 
@@ -2086,6 +2184,16 @@ export const AdminAddCoursePage: React.FC<AdminAddCoursePageProps> = ({
                                 </div>
 
                                 <div className="flex items-center gap-1">
+                                  {les.lessonType === 'VIDEO' && les.contentUrl && (
+                                    <button
+                                      type="button"
+                                      onClick={() => setAdminPreviewVideo({ url: les.contentUrl, title: les.title })}
+                                      className="p-1.5 text-slate-400 hover:text-green-700 transition-colors cursor-pointer"
+                                      title="Preview Video Player"
+                                    >
+                                      <Play className="w-3.5 h-3.5" />
+                                    </button>
+                                  )}
                                   <button
                                     type="button"
                                     onClick={() => handleMoveLesson(sec.id, lesIdx, 'up')}
@@ -2145,14 +2253,24 @@ export const AdminAddCoursePage: React.FC<AdminAddCoursePageProps> = ({
                         </span>
                       </div>
 
-                      <button
-                        type="button"
-                        onClick={() => handleOpenAddLessonModal(sec)}
-                        className="inline-flex items-center gap-1.5 text-green-700 hover:text-green-800 font-bold cursor-pointer text-xs"
-                      >
-                        <Plus className="w-3.5 h-3.5" />
-                        <span>+ Add Lesson</span>
-                      </button>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => handleOpenAddLessonModal(sec, 'VIDEO')}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white rounded-xl text-xs font-bold shadow-2xs transition-colors cursor-pointer"
+                        >
+                          <Video className="w-3.5 h-3.5" />
+                          <span>+ Add Video</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleOpenAddLessonModal(sec, 'TEXT')}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 rounded-xl text-xs font-bold transition-colors cursor-pointer"
+                        >
+                          <FileText className="w-3.5 h-3.5" />
+                          <span>+ Add Content</span>
+                        </button>
+                      </div>
                     </div>
                   )}
                 </div>
@@ -2166,45 +2284,45 @@ export const AdminAddCoursePage: React.FC<AdminAddCoursePageProps> = ({
       {isAddingSection && (
         <div className="fixed inset-0 bg-slate-950/50 backdrop-blur-xs flex items-center justify-center p-4 z-50">
           <div className="bg-white border border-slate-200 rounded-2xl p-6 max-w-md w-full space-y-4 shadow-xl">
-            <h3 className="text-base font-bold text-slate-900">Add Module / Section</h3>
-            <div className="space-y-3">
+            <div className="flex items-center justify-between pb-1 border-b border-slate-100">
+              <h3 className="text-base font-bold text-slate-900">Add Module / Section</h3>
+              <button
+                type="button"
+                onClick={() => setIsAddingSection(false)}
+                className="text-slate-400 hover:text-slate-600 p-1 rounded-lg"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="space-y-4">
               <div>
-                <label className="text-xs font-semibold text-slate-700">Module Title *</label>
+                <label className="text-xs font-semibold text-slate-700 block mb-1">
+                  Module Title *
+                </label>
                 <input
                   type="text"
                   value={newSectionTitle}
                   onChange={(e) => setNewSectionTitle(e.target.value)}
                   placeholder="e.g. Module 1 — Introduction to Python"
-                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-green-500/20 focus:border-green-600 mt-1 transition"
-                />
-              </div>
-
-              <div>
-                <label className="text-xs font-semibold text-slate-700">Module Description</label>
-                <textarea
-                  rows={2}
-                  value={newSectionDesc}
-                  onChange={(e) => setNewSectionDesc(e.target.value)}
-                  placeholder="Objectives and summary of this module..."
-                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-green-500/20 focus:border-green-600 mt-1 transition"
+                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-green-500/20 focus:border-green-600 transition"
+                  autoFocus
                 />
               </div>
 
               <div className="grid grid-cols-2 gap-3 pt-1">
                 <div>
-                  <label className="text-xs font-semibold text-slate-700">Status</label>
+                  <label className="text-xs font-semibold text-slate-700 block mb-1">Status</label>
                   <select
-                    value={sectionStatus}
-                    onChange={(e: any) => setSectionStatus(e.target.value)}
-                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 mt-1"
+                    value="DRAFT"
+                    disabled
+                    className="w-full p-2.5 bg-slate-100 border border-slate-200 rounded-xl text-xs font-semibold text-slate-600 cursor-not-allowed"
                   >
-                    <option value="PUBLISHED">Published</option>
                     <option value="DRAFT">Draft</option>
                   </select>
                 </div>
 
                 <div className="flex items-center pt-5">
-                  <label className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer">
+                  <label className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer font-medium">
                     <input
                       type="checkbox"
                       checked={sectionIsFreePreview}
@@ -2217,7 +2335,7 @@ export const AdminAddCoursePage: React.FC<AdminAddCoursePageProps> = ({
               </div>
             </div>
 
-            <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
+            <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
               <button
                 type="button"
                 onClick={() => setIsAddingSection(false)}
@@ -2241,32 +2359,59 @@ export const AdminAddCoursePage: React.FC<AdminAddCoursePageProps> = ({
       {editingSection && (
         <div className="fixed inset-0 bg-slate-950/50 backdrop-blur-xs flex items-center justify-center p-4 z-50">
           <div className="bg-white border border-slate-200 rounded-2xl p-6 max-w-md w-full space-y-4 shadow-xl">
-            <h3 className="text-base font-bold text-slate-900">Edit Module / Section</h3>
-            <div className="space-y-3">
+            <div className="flex items-center justify-between pb-1 border-b border-slate-100">
+              <h3 className="text-base font-bold text-slate-900">Edit Module</h3>
+              <button
+                type="button"
+                onClick={() => setEditingSection(null)}
+                className="text-slate-400 hover:text-slate-600 p-1 rounded-lg"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="space-y-4">
               <div>
-                <label className="text-xs font-semibold text-slate-700">Module Title *</label>
+                <label className="text-xs font-semibold text-slate-700 block mb-1">
+                  Module Title *
+                </label>
                 <input
                   type="text"
                   value={editSectionTitle}
                   onChange={(e) => setEditSectionTitle(e.target.value)}
-                  placeholder="Module title"
-                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-green-500/20 focus:border-green-600 mt-1 transition"
+                  placeholder="e.g. Module 1 — Introduction to Python"
+                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-green-500/20 focus:border-green-600 transition"
+                  autoFocus
                 />
               </div>
 
-              <div>
-                <label className="text-xs font-semibold text-slate-700">Module Description</label>
-                <textarea
-                  rows={2}
-                  value={editSectionDesc}
-                  onChange={(e) => setEditSectionDesc(e.target.value)}
-                  placeholder="Module description"
-                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-green-500/20 focus:border-green-600 mt-1 transition"
-                />
+              <div className="grid grid-cols-2 gap-3 pt-1">
+                <div>
+                  <label className="text-xs font-semibold text-slate-700 block mb-1">Status</label>
+                  <select
+                    value={editSectionStatus}
+                    onChange={(e: any) => setEditSectionStatus(e.target.value)}
+                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-900 focus:outline-none focus:ring-2 focus:ring-green-500/20"
+                  >
+                    <option value="DRAFT">Draft</option>
+                    <option value="PUBLISHED">Published</option>
+                  </select>
+                </div>
+
+                <div className="flex items-center pt-5">
+                  <label className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer font-medium">
+                    <input
+                      type="checkbox"
+                      checked={editSectionIsFreePreview}
+                      onChange={(e) => setEditSectionIsFreePreview(e.target.checked)}
+                      className="w-4 h-4 rounded text-green-600 focus:ring-green-500 border-slate-300"
+                    />
+                    <span>Free Preview Module</span>
+                  </label>
+                </div>
               </div>
             </div>
 
-            <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
+            <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
               <button
                 type="button"
                 onClick={() => setEditingSection(null)}
@@ -2280,6 +2425,103 @@ export const AdminAddCoursePage: React.FC<AdminAddCoursePageProps> = ({
                 className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white font-bold rounded-xl text-xs cursor-pointer shadow-xs transition"
               >
                 Update Module
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Delete Module Confirmation */}
+      {deletingSectionId !== null && (
+        <div className="fixed inset-0 bg-slate-950/50 backdrop-blur-xs flex items-center justify-center p-4 z-50">
+          <div className="bg-white border border-slate-200 rounded-2xl p-6 max-w-md w-full space-y-4 shadow-xl">
+            <div className="flex items-center gap-3 text-rose-600">
+              <div className="w-10 h-10 rounded-xl bg-rose-50 flex items-center justify-center shrink-0">
+                <AlertCircle className="w-5 h-5 text-rose-600" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-slate-900">Delete Module</h3>
+                <p className="text-xs text-slate-500">Confirm irreversible action</p>
+              </div>
+            </div>
+            <p className="text-xs text-slate-600 leading-relaxed">
+              Are you sure you want to delete this module and all of its lessons?
+            </p>
+            <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setDeletingSectionId(null)}
+                className="px-4 py-2 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 rounded-xl text-xs font-semibold cursor-pointer transition"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={async () => {
+                  const idToDelete = deletingSectionId;
+                  setDeletingSectionId(null);
+                  try {
+                    await deleteCourseSection(idToDelete);
+                    setSections(sections.filter((s) => s.id !== idToDelete));
+                    if (onShowToast) onShowToast('Module deleted.');
+                  } catch {
+                    if (onShowToast) onShowToast('Failed to delete module.');
+                  }
+                }}
+                className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-xl text-xs cursor-pointer shadow-xs transition"
+              >
+                Delete Module
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Admin Video Player Preview */}
+      {adminPreviewVideo && (
+        <div className="fixed inset-0 bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-4 z-50">
+          <div className="bg-white border border-slate-200 rounded-3xl p-5 sm:p-6 max-w-2xl w-full space-y-4 shadow-2xl">
+            <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-lg bg-green-50 text-green-600 flex items-center justify-center">
+                  <Video className="w-4 h-4" />
+                </div>
+                <div>
+                  <h4 className="font-bold text-sm text-slate-900">{adminPreviewVideo.title || 'Video Player'}</h4>
+                  <p className="text-[11px] text-slate-400">Admin Video Verification Preview</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setAdminPreviewVideo(null)}
+                className="p-1.5 rounded-xl text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="aspect-video w-full rounded-2xl overflow-hidden bg-black flex items-center justify-center shadow-inner">
+              {adminPreviewVideo.url.includes('youtube.com') || adminPreviewVideo.url.includes('youtu.be') ? (
+                <iframe
+                  src={`https://www.youtube.com/embed/${extractYouTubeId(adminPreviewVideo.url)}`}
+                  className="w-full h-full"
+                  allowFullScreen
+                />
+              ) : (
+                <video
+                  src={adminPreviewVideo.url}
+                  controls
+                  autoPlay
+                  className="w-full h-full object-contain"
+                />
+              )}
+            </div>
+            <div className="flex justify-end pt-1">
+              <button
+                type="button"
+                onClick={() => setAdminPreviewVideo(null)}
+                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl transition"
+              >
+                Close Preview
               </button>
             </div>
           </div>
@@ -2406,11 +2648,22 @@ export const AdminAddCoursePage: React.FC<AdminAddCoursePageProps> = ({
                 {/* Upload Video Section */}
                 {lessonFormState.videoSource === 'UPLOAD' && (
                   <div className="space-y-3">
-                    <label className="text-xs font-semibold text-slate-700 block">
-                      Upload Video File (MP4, WebM, MOV)
-                    </label>
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-semibold text-slate-700">
+                        Upload Video *
+                      </label>
+                      <span className="text-[11px] text-slate-400">Supported: MP4, WebM, MOV</span>
+                    </div>
 
-                    <div className="border-2 border-dashed border-slate-200 hover:border-green-400 rounded-2xl p-5 text-center bg-white transition-colors">
+                    <div
+                      onDragOver={(e) => e.preventDefault()}
+                      onDrop={(e) => {
+                        e.preventDefault();
+                        const file = e.dataTransfer.files?.[0];
+                        if (file) handleLessonVideoUpload(file);
+                      }}
+                      className="border-2 border-dashed border-slate-200 hover:border-green-500 rounded-2xl p-6 text-center bg-white transition-colors shadow-2xs group"
+                    >
                       <input
                         type="file"
                         id="lesson-video-picker"
@@ -2421,30 +2674,40 @@ export const AdminAddCoursePage: React.FC<AdminAddCoursePageProps> = ({
                         }}
                         className="hidden"
                       />
-                      <label
-                        htmlFor="lesson-video-picker"
-                        className="cursor-pointer flex flex-col items-center justify-center gap-2"
-                      >
-                        <div className="w-12 h-12 rounded-full bg-green-50 text-green-600 flex items-center justify-center">
-                          <Upload className="w-6 h-6" />
+                      <div className="flex flex-col items-center justify-center gap-2.5">
+                        <div className="w-12 h-12 rounded-2xl bg-green-50 text-green-600 flex items-center justify-center shadow-2xs group-hover:scale-105 transition-transform">
+                          <Video className="w-6 h-6" />
                         </div>
                         <div>
-                          <p className="text-xs font-bold text-slate-800">
-                            {lessonFormState.videoFileName ? 'Change Video File' : 'Click to Upload Video'}
-                          </p>
-                          <p className="text-[11px] text-slate-400 mt-0.5">
-                            Files are saved to <span className="font-mono text-slate-500">uploads/video/</span>
+                          <h4 className="text-xs sm:text-sm font-bold text-slate-900">
+                            {lessonFormState.videoFileName ? lessonFormState.videoFileName : 'Upload Course Video'}
+                          </h4>
+                          <p className="text-xs text-slate-500 mt-1">
+                            Drag &amp; drop video here or
                           </p>
                         </div>
-                      </label>
+                        <label
+                          htmlFor="lesson-video-picker"
+                          className="inline-flex items-center gap-1.5 px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-xl text-xs font-bold cursor-pointer shadow-xs transition"
+                        >
+                          <Upload className="w-3.5 h-3.5" />
+                          <span>Browse Video</span>
+                        </label>
+                        <p className="text-[11px] text-slate-400 mt-0.5">
+                          MP4, WebM, MOV • Max 2GB
+                        </p>
+                      </div>
                     </div>
 
                     {/* Upload progress indicator */}
                     {lessonFormState.videoUploadStatus === 'uploading' && (
-                      <div className="space-y-1 bg-white p-3 rounded-xl border border-slate-200">
+                      <div className="space-y-2 bg-white p-4 rounded-xl border border-slate-200 shadow-2xs">
                         <div className="flex justify-between text-xs font-semibold text-slate-700">
-                          <span>Uploading video...</span>
-                          <span>{lessonFormState.videoUploadPercent}%</span>
+                          <span className="flex items-center gap-1.5">
+                            <Loader2 className="w-3.5 h-3.5 animate-spin text-green-600" />
+                            Uploading video... {lessonFormState.videoFileName}
+                          </span>
+                          <span className="font-mono text-green-700 font-bold">{lessonFormState.videoUploadPercent}%</span>
                         </div>
                         <div className="w-full bg-slate-100 rounded-full h-2 overflow-hidden">
                           <div
@@ -2452,6 +2715,22 @@ export const AdminAddCoursePage: React.FC<AdminAddCoursePageProps> = ({
                             style={{ width: `${lessonFormState.videoUploadPercent}%` }}
                           />
                         </div>
+                      </div>
+                    )}
+
+                    {/* Error state alert */}
+                    {lessonFormState.videoUploadStatus === 'error' && (
+                      <div className="p-3.5 bg-rose-50 border border-rose-200 rounded-xl flex items-center justify-between text-xs text-rose-800">
+                        <div className="flex items-center gap-2">
+                          <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+                          <span>{lessonFormState.videoUploadError || 'Unable to upload video. Please try again.'}</span>
+                        </div>
+                        <label
+                          htmlFor="lesson-video-picker"
+                          className="px-2.5 py-1 bg-white hover:bg-rose-100 text-rose-700 border border-rose-300 rounded-lg font-bold cursor-pointer transition text-[11px]"
+                        >
+                          Retry
+                        </label>
                       </div>
                     )}
 
