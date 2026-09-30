@@ -268,6 +268,7 @@ export const AdminAddCoursePage: React.FC<AdminAddCoursePageProps> = ({
     videoSource: 'UPLOAD' | 'YOUTUBE';
     videoFile: File | null;
     videoFileName: string;
+    videoThumbnailUrl?: string;
     youtubeUrl: string;
     youtubeVideoId: string;
     videoUploadPercent: number;
@@ -326,6 +327,7 @@ export const AdminAddCoursePage: React.FC<AdminAddCoursePageProps> = ({
     videoSource: 'UPLOAD',
     videoFile: null,
     videoFileName: '',
+    videoThumbnailUrl: '',
     youtubeUrl: '',
     youtubeVideoId: '',
     videoUploadPercent: 0,
@@ -463,6 +465,7 @@ export const AdminAddCoursePage: React.FC<AdminAddCoursePageProps> = ({
       videoSource: isYt ? 'YOUTUBE' : 'UPLOAD',
       videoFile: null,
       videoFileName: les.contentUrl ? les.contentUrl.split('/').pop() || '' : '',
+      videoThumbnailUrl: parsedMeta?.thumbnailUrl || '',
       youtubeUrl: isYt ? les.contentUrl || '' : '',
       youtubeVideoId: ytId,
       videoUploadPercent: 100,
@@ -639,7 +642,12 @@ export const AdminAddCoursePage: React.FC<AdminAddCoursePageProps> = ({
     }
 
     let metaDescription = lessonFormState.description;
-    if (lessonFormState.lessonType === 'TEXT') {
+    if (lessonFormState.lessonType === 'VIDEO') {
+      metaDescription = JSON.stringify({
+        description: lessonFormState.description,
+        thumbnailUrl: lessonFormState.videoThumbnailUrl || '',
+      });
+    } else if (lessonFormState.lessonType === 'TEXT') {
       metaDescription = lessonFormState.textContent || lessonFormState.description;
     } else if (lessonFormState.lessonType === 'QUIZ') {
       metaDescription = JSON.stringify({
@@ -755,6 +763,7 @@ export const AdminAddCoursePage: React.FC<AdminAddCoursePageProps> = ({
   const [editSectionIsFreePreview, setEditSectionIsFreePreview] = useState(false);
   const [deletingSectionId, setDeletingSectionId] = useState<number | null>(null);
   const [adminPreviewVideo, setAdminPreviewVideo] = useState<{ url: string; title: string } | null>(null);
+  const [adminPreviewContent, setAdminPreviewContent] = useState<{ title: string; content: string } | null>(null);
 
   const getSectionMeta = (sec: any) => {
     try {
@@ -1146,22 +1155,21 @@ export const AdminAddCoursePage: React.FC<AdminAddCoursePageProps> = ({
         title: newSectionTitle.trim(),
         description: payloadDesc,
       });
-      setSections([
-        ...sections,
-        {
-          ...newSec,
-          description: payloadDesc,
-          status: 'DRAFT',
-          freePreview: Boolean(sectionIsFreePreview),
-          lessons: [],
-        },
-      ]);
+      const createdModule = {
+        ...newSec,
+        description: payloadDesc,
+        status: 'DRAFT',
+        freePreview: false,
+        lessons: [],
+      };
+      setSections([...sections, createdModule]);
+      setExpandedSections((prev) => ({ ...prev, [createdModule.id]: true }));
       setNewSectionTitle('');
       setNewSectionDesc('');
-      setSectionStatus('DRAFT');
-      setSectionIsFreePreview(false);
       setIsAddingSection(false);
       if (onShowToast) onShowToast('Module created as Draft!');
+      // Immediately open Video Upload editor for newly created module
+      handleOpenAddLessonModal(createdModule, 'VIDEO');
     } catch {
       if (onShowToast) onShowToast('Failed to add module.');
     }
@@ -2080,7 +2088,29 @@ export const AdminAddCoursePage: React.FC<AdminAddCoursePageProps> = ({
 
                   {/* Lessons List in Section (if expanded) */}
                   {isExpanded && (
-                    <div className="space-y-2.5">
+                    <div className="space-y-3 pt-1">
+                      <div className="flex items-center justify-between px-1 text-xs text-slate-500 font-bold border-b border-slate-200/60 pb-2">
+                        <span className="uppercase tracking-wider text-slate-700 font-extrabold">Lessons ({sec.lessons?.length || 0})</span>
+                        <div className="flex items-center gap-3">
+                          <button
+                            type="button"
+                            onClick={() => handleOpenAddLessonModal(sec, 'VIDEO')}
+                            className="text-green-700 hover:text-green-800 text-xs font-bold flex items-center gap-1 cursor-pointer transition"
+                          >
+                            <Video className="w-3.5 h-3.5" />
+                            <span>+ Add Video</span>
+                          </button>
+                          <span className="text-slate-300">•</span>
+                          <button
+                            type="button"
+                            onClick={() => handleOpenAddLessonModal(sec, 'TEXT')}
+                            className="text-amber-700 hover:text-amber-800 text-xs font-bold flex items-center gap-1 cursor-pointer transition"
+                          >
+                            <FileText className="w-3.5 h-3.5" />
+                            <span>+ Add Content</span>
+                          </button>
+                        </div>
+                      </div>
                       {!sec.lessons || sec.lessons.length === 0 ? (
                         <div className="py-8 text-center text-xs text-slate-400 border border-dashed border-slate-200 rounded-xl space-y-2.5 bg-white p-6">
                           <p className="font-semibold text-slate-600 text-sm">No lessons added yet.</p>
@@ -2122,8 +2152,8 @@ export const AdminAddCoursePage: React.FC<AdminAddCoursePageProps> = ({
                                 <div className="cursor-grab active:cursor-grabbing text-slate-300 hover:text-slate-500 shrink-0" title="Drag to reorder lesson">
                                   <GripVertical className="w-3.5 h-3.5" />
                                 </div>
-                                <span className="text-slate-400 font-bold shrink-0 text-xs">
-                                  Lesson {lesIdx + 1}
+                                <span className="font-mono text-slate-500 font-bold shrink-0 text-xs">
+                                  {String(lesIdx + 1).padStart(2, '0')}
                                 </span>
 
                                 {les.lessonType === 'VIDEO' ? (
@@ -2162,16 +2192,14 @@ export const AdminAddCoursePage: React.FC<AdminAddCoursePageProps> = ({
                                       </span>
                                     )}
                                   </div>
-                                  <div className="text-[11px] text-slate-400 flex items-center gap-1.5 mt-0.5 font-medium">
-                                    <span>{les.lessonType === 'VIDEO' ? 'Video' : les.lessonType === 'TEXT' ? 'Reading' : les.lessonType}</span>
-                                    <span>•</span>
+                                  <div className="text-[11px] text-slate-500 flex items-center gap-1.5 mt-0.5 font-medium">
+                                    <span>{les.lessonType === 'VIDEO' ? '🎥 Video' : les.lessonType === 'TEXT' ? '📄 Content' : les.lessonType}</span>
                                     {les.lessonType === 'VIDEO' && (
                                       <>
-                                        <span className="font-mono text-slate-500 font-semibold">{displayDuration}</span>
-                                        <span>•</span>
+                                        <span className="text-slate-300">•</span>
+                                        <span className="font-mono text-slate-600 font-semibold">{displayDuration}</span>
                                       </>
                                     )}
-                                    <span className="text-slate-500 font-medium">{les.status || 'Draft'}</span>
                                   </div>
                                 </div>
                               </div>
@@ -2183,23 +2211,57 @@ export const AdminAddCoursePage: React.FC<AdminAddCoursePageProps> = ({
                                   <span>{displayDuration}</span>
                                 </div>
 
-                                <div className="flex items-center gap-1">
+                                <div className="flex items-center gap-1.5">
                                   {les.lessonType === 'VIDEO' && les.contentUrl && (
                                     <button
                                       type="button"
                                       onClick={() => setAdminPreviewVideo({ url: les.contentUrl, title: les.title })}
-                                      className="p-1.5 text-slate-400 hover:text-green-700 transition-colors cursor-pointer"
+                                      className="px-2.5 py-1 text-xs font-bold text-green-700 hover:text-green-800 bg-green-50 hover:bg-green-100 border border-green-200 rounded-lg flex items-center gap-1 transition cursor-pointer"
                                       title="Preview Video Player"
                                     >
-                                      <Play className="w-3.5 h-3.5" />
+                                      <Play className="w-3 h-3 text-green-600" />
+                                      <span>Preview</span>
                                     </button>
                                   )}
+
+                                  {les.lessonType === 'TEXT' && (
+                                    <button
+                                      type="button"
+                                      onClick={() => setAdminPreviewContent({ title: les.title, content: les.textContent || les.description || '' })}
+                                      className="px-2.5 py-1 text-xs font-bold text-amber-700 hover:text-amber-800 bg-amber-50 hover:bg-amber-100 border border-amber-200 rounded-lg flex items-center gap-1 transition cursor-pointer"
+                                      title="View Content Reading Material"
+                                    >
+                                      <BookOpen className="w-3 h-3 text-amber-600" />
+                                      <span>View</span>
+                                    </button>
+                                  )}
+
+                                  <button
+                                    type="button"
+                                    onClick={() => handleOpenEditLessonModal(sec, les)}
+                                    className="px-2.5 py-1 text-xs font-semibold text-slate-600 hover:text-slate-900 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-lg flex items-center gap-1 transition cursor-pointer"
+                                    title="Edit Lesson"
+                                  >
+                                    <Edit2 className="w-3 h-3 text-slate-500" />
+                                    <span>Edit</span>
+                                  </button>
+
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDeleteLesson(sec.id, les.id)}
+                                    className="px-2.5 py-1 text-xs font-semibold text-rose-600 hover:text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200 rounded-lg flex items-center gap-1 transition cursor-pointer"
+                                    title="Delete Lesson"
+                                  >
+                                    <Trash2 className="w-3 h-3 text-rose-500" />
+                                    <span>Delete</span>
+                                  </button>
+
                                   <button
                                     type="button"
                                     onClick={() => handleMoveLesson(sec.id, lesIdx, 'up')}
                                     disabled={lesIdx === 0}
-                                    className="p-1.5 text-slate-400 hover:text-slate-700 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-                                    title="Move Lesson Up"
+                                    className="p-1 text-slate-400 hover:text-slate-700 disabled:opacity-30 disabled:cursor-not-allowed transition-colors ml-1"
+                                    title="Move Up"
                                   >
                                     <ChevronUp className="w-3.5 h-3.5" />
                                   </button>
@@ -2208,28 +2270,10 @@ export const AdminAddCoursePage: React.FC<AdminAddCoursePageProps> = ({
                                     type="button"
                                     onClick={() => handleMoveLesson(sec.id, lesIdx, 'down')}
                                     disabled={lesIdx === (sec.lessons?.length || 1) - 1}
-                                    className="p-1.5 text-slate-400 hover:text-slate-700 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-                                    title="Move Lesson Down"
+                                    className="p-1 text-slate-400 hover:text-slate-700 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                                    title="Move Down"
                                   >
                                     <ChevronDown className="w-3.5 h-3.5" />
-                                  </button>
-
-                                  <button
-                                    type="button"
-                                    onClick={() => handleOpenEditLessonModal(sec, les)}
-                                    className="p-1.5 text-slate-400 hover:text-green-700 transition-colors cursor-pointer"
-                                    title="Edit Lesson"
-                                  >
-                                    <Edit2 className="w-3.5 h-3.5" />
-                                  </button>
-
-                                  <button
-                                    type="button"
-                                    onClick={() => handleDeleteLesson(sec.id, les.id)}
-                                    className="p-1.5 text-slate-400 hover:text-rose-600 transition-colors cursor-pointer"
-                                    title="Delete Lesson"
-                                  >
-                                    <Trash2 className="w-3.5 h-3.5" />
                                   </button>
                                 </div>
                               </div>
@@ -2280,7 +2324,7 @@ export const AdminAddCoursePage: React.FC<AdminAddCoursePageProps> = ({
         </div>
       </div>
 
-      {/* Modal: Add Section */}
+      {/* Modal: Add Module / Section (Only Module Title *) */}
       {isAddingSection && (
         <div className="fixed inset-0 bg-slate-950/50 backdrop-blur-xs flex items-center justify-center p-4 z-50">
           <div className="bg-white border border-slate-200 rounded-2xl p-6 max-w-md w-full space-y-4 shadow-xl">
@@ -2308,31 +2352,6 @@ export const AdminAddCoursePage: React.FC<AdminAddCoursePageProps> = ({
                   autoFocus
                 />
               </div>
-
-              <div className="grid grid-cols-2 gap-3 pt-1">
-                <div>
-                  <label className="text-xs font-semibold text-slate-700 block mb-1">Status</label>
-                  <select
-                    value="DRAFT"
-                    disabled
-                    className="w-full p-2.5 bg-slate-100 border border-slate-200 rounded-xl text-xs font-semibold text-slate-600 cursor-not-allowed"
-                  >
-                    <option value="DRAFT">Draft</option>
-                  </select>
-                </div>
-
-                <div className="flex items-center pt-5">
-                  <label className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer font-medium">
-                    <input
-                      type="checkbox"
-                      checked={sectionIsFreePreview}
-                      onChange={(e) => setSectionIsFreePreview(e.target.checked)}
-                      className="w-4 h-4 rounded text-green-600 focus:ring-green-500 border-slate-300"
-                    />
-                    <span>Free Preview Module</span>
-                  </label>
-                </div>
-              </div>
             </div>
 
             <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
@@ -2355,7 +2374,7 @@ export const AdminAddCoursePage: React.FC<AdminAddCoursePageProps> = ({
         </div>
       )}
 
-      {/* Modal: Edit Section */}
+      {/* Modal: Edit Module (Only Module Title *) */}
       {editingSection && (
         <div className="fixed inset-0 bg-slate-950/50 backdrop-blur-xs flex items-center justify-center p-4 z-50">
           <div className="bg-white border border-slate-200 rounded-2xl p-6 max-w-md w-full space-y-4 shadow-xl">
@@ -2382,32 +2401,6 @@ export const AdminAddCoursePage: React.FC<AdminAddCoursePageProps> = ({
                   className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-green-500/20 focus:border-green-600 transition"
                   autoFocus
                 />
-              </div>
-
-              <div className="grid grid-cols-2 gap-3 pt-1">
-                <div>
-                  <label className="text-xs font-semibold text-slate-700 block mb-1">Status</label>
-                  <select
-                    value={editSectionStatus}
-                    onChange={(e: any) => setEditSectionStatus(e.target.value)}
-                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-900 focus:outline-none focus:ring-2 focus:ring-green-500/20"
-                  >
-                    <option value="DRAFT">Draft</option>
-                    <option value="PUBLISHED">Published</option>
-                  </select>
-                </div>
-
-                <div className="flex items-center pt-5">
-                  <label className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer font-medium">
-                    <input
-                      type="checkbox"
-                      checked={editSectionIsFreePreview}
-                      onChange={(e) => setEditSectionIsFreePreview(e.target.checked)}
-                      className="w-4 h-4 rounded text-green-600 focus:ring-green-500 border-slate-300"
-                    />
-                    <span>Free Preview Module</span>
-                  </label>
-                </div>
               </div>
             </div>
 
@@ -2528,6 +2521,46 @@ export const AdminAddCoursePage: React.FC<AdminAddCoursePageProps> = ({
         </div>
       )}
 
+      {/* Modal: Admin Content Reader Preview */}
+      {adminPreviewContent && (
+        <div className="fixed inset-0 bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-4 z-50">
+          <div className="bg-white border border-slate-200 rounded-3xl p-6 max-w-2xl w-full space-y-4 shadow-2xl max-h-[85vh] flex flex-col">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100 shrink-0">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-lg bg-amber-50 text-amber-700 flex items-center justify-center font-bold">
+                  <FileText className="w-4 h-4 text-amber-600" />
+                </div>
+                <div>
+                  <h4 className="font-bold text-sm text-slate-900">{adminPreviewContent.title}</h4>
+                  <p className="text-[11px] text-slate-400">Content Reading Material</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setAdminPreviewContent(null)}
+                className="p-1.5 rounded-xl text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto pr-1 space-y-3 text-slate-700 text-sm leading-relaxed whitespace-pre-wrap font-sans bg-slate-50/50 p-4 rounded-2xl border border-slate-100">
+              {adminPreviewContent.content || 'No text content available for this lesson.'}
+            </div>
+
+            <div className="flex justify-end pt-2 border-t border-slate-100 shrink-0">
+              <button
+                type="button"
+                onClick={() => setAdminPreviewContent(null)}
+                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl transition"
+              >
+                Close View
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Modal: Comprehensive Add / Edit Lesson Modal */}
       {lessonModalOpen && (
         <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 z-50">
@@ -2544,7 +2577,11 @@ export const AdminAddCoursePage: React.FC<AdminAddCoursePageProps> = ({
                 </div>
                 <div>
                   <h3 className="text-base sm:text-lg font-bold text-slate-900">
-                    {lessonModalMode === 'create' ? 'Add Lesson / Content' : 'Edit Lesson / Content'}
+                    {lessonFormState.lessonType === 'VIDEO'
+                      ? (lessonModalMode === 'create' ? 'Add Video Lesson' : 'Edit Video Lesson')
+                      : lessonFormState.lessonType === 'TEXT'
+                      ? (lessonModalMode === 'create' ? 'Add Content Lesson' : 'Edit Content Lesson')
+                      : (lessonModalMode === 'create' ? 'Add Lesson / Content' : 'Edit Lesson / Content')}
                   </h3>
                   <p className="text-xs text-slate-500">
                     Module: <span className="font-semibold text-slate-700">{currentSectionForLesson?.title}</span>
@@ -2564,13 +2601,21 @@ export const AdminAddCoursePage: React.FC<AdminAddCoursePageProps> = ({
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="sm:col-span-2">
                 <label className="text-xs font-semibold text-slate-700 block mb-1">
-                  Lesson Title *
+                  {lessonFormState.lessonType === 'VIDEO' ? 'Video Title *' :
+                   lessonFormState.lessonType === 'TEXT' ? 'Content Title *' :
+                   'Lesson Title *'}
                 </label>
                 <input
                   type="text"
                   value={lessonFormState.title}
                   onChange={(e) => setLessonFormState((prev) => ({ ...prev, title: e.target.value }))}
-                  placeholder="e.g. Python Variables and Data Types"
+                  placeholder={
+                    lessonFormState.lessonType === 'VIDEO'
+                      ? 'e.g. Introduction to Python'
+                      : lessonFormState.lessonType === 'TEXT'
+                      ? 'e.g. Python Variables and Data Types'
+                      : 'e.g. Lesson Title'
+                  }
                   className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-green-500/20 focus:border-green-600 transition"
                 />
               </div>
@@ -2852,6 +2897,69 @@ export const AdminAddCoursePage: React.FC<AdminAddCoursePageProps> = ({
                     )}
                   </div>
                 )}
+
+                {/* Optional Video Thumbnail */}
+                <div className="pt-2 border-t border-slate-200">
+                  <label className="text-xs font-semibold text-slate-700 block mb-1">
+                    Optional Video Thumbnail
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="text"
+                      value={lessonFormState.videoThumbnailUrl || ''}
+                      onChange={(e) =>
+                        setLessonFormState((prev) => ({ ...prev, videoThumbnailUrl: e.target.value }))
+                      }
+                      placeholder="Paste image URL or browse an image..."
+                      className="flex-1 p-2 bg-white border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-green-500/20"
+                    />
+                    <input
+                      type="file"
+                      id="video-thumb-upload"
+                      accept="image/*"
+                      onChange={async (e) => {
+                        const file = e.target.files?.[0];
+                        if (file) {
+                          const formData = new FormData();
+                          formData.append('file', file);
+                          try {
+                            const res = await fetch('/api/uploads/thumbnail', {
+                              method: 'POST',
+                              body: formData,
+                            });
+                            const data = await res.json();
+                            if (data.url) {
+                              setLessonFormState((prev) => ({ ...prev, videoThumbnailUrl: data.url }));
+                            }
+                          } catch {}
+                        }
+                      }}
+                      className="hidden"
+                    />
+                    <label
+                      htmlFor="video-thumb-upload"
+                      className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 rounded-xl text-xs font-semibold cursor-pointer shrink-0 transition"
+                    >
+                      Browse Image
+                    </label>
+                  </div>
+                </div>
+
+                {/* Video Description if needed */}
+                <div>
+                  <label className="text-xs font-semibold text-slate-700 block mb-1">
+                    Video Description (Optional)
+                  </label>
+                  <textarea
+                    rows={2}
+                    value={lessonFormState.description}
+                    onChange={(e) =>
+                      setLessonFormState((prev) => ({ ...prev, description: e.target.value }))
+                    }
+                    placeholder="Key concepts or summary covered in this video..."
+                    className="w-full p-2.5 bg-white border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-green-500/20"
+                  />
+                </div>
 
                 {/* Video Duration (Auto-detected or Manual) */}
                 <div className="grid grid-cols-2 gap-3 pt-1 border-t border-slate-200">
@@ -3448,7 +3556,13 @@ export const AdminAddCoursePage: React.FC<AdminAddCoursePageProps> = ({
                 className="flex items-center gap-1.5 px-5 py-2.5 bg-green-600 hover:bg-green-700 text-white font-bold rounded-xl text-xs cursor-pointer shadow-xs transition"
               >
                 <Save className="w-3.5 h-3.5" />
-                <span>{lessonModalMode === 'create' ? 'Create Lesson' : 'Update Lesson'}</span>
+                <span>
+                  {lessonFormState.lessonType === 'VIDEO'
+                    ? (lessonModalMode === 'create' ? 'Save Video' : 'Update Video')
+                    : lessonFormState.lessonType === 'TEXT'
+                    ? (lessonModalMode === 'create' ? 'Save Content' : 'Update Content')
+                    : (lessonModalMode === 'create' ? 'Create Lesson' : 'Update Lesson')}
+                </span>
               </button>
             </div>
           </div>
