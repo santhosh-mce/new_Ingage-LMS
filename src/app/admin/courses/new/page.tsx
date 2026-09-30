@@ -1,23 +1,43 @@
 "use client";
 
-import React from "react";
+import React, { Suspense } from "react";
 import AdminAddCoursePage from "@/admin/pages/AdminAddCoursePage";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { AdminLayout } from "@/admin/AdminLayout";
 import { useAuth } from "@/context/AuthContext";
+import { Loader2 } from "lucide-react";
 
-export default function AdminPage() {
+function AdminAddCourseContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const courseId = searchParams.get("id") || searchParams.get("courseId") || undefined;
   const { currentUser, logout } = useAuth();
 
   return (
     <AdminLayout
-      currentPath={typeof window !== "undefined" ? window.location.pathname : "/admin"}
+      currentPath={courseId ? `/admin/courses/new?id=${courseId}` : "/admin/courses/new"}
       onNavigate={(path: string) => router.push(path)}
       currentUser={currentUser}
       onLogout={logout}
     >
-      <AdminAddCoursePage onNavigate={(path: string) => router.push(path)} />
+      <AdminAddCoursePage
+        courseId={courseId}
+        onNavigate={(path: string) => router.push(path)}
+      />
     </AdminLayout>
+  );
+}
+
+export default function AdminPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex items-center justify-center min-h-[60vh]">
+          <Loader2 className="w-8 h-8 text-green-600 animate-spin" />
+        </div>
+      }
+    >
+      <AdminAddCourseContent />
+    </Suspense>
   );
 }

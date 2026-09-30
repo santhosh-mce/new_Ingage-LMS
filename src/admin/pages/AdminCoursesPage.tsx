@@ -350,7 +350,7 @@ export const AdminCoursesPage: React.FC<AdminCoursesPageProps> = ({
 
                       {/* Edit */}
                       <button
-                        onClick={() => onNavigate(`/admin/courses/${c.id}/edit`)}
+                        onClick={() => onNavigate(`/admin/courses/new?id=${c.id}`)}
                         className="p-1.5 rounded-lg bg-slate-100 hover:bg-green-50 text-slate-600 hover:text-green-700 transition-colors cursor-pointer"
                         title="Edit Course & Content"
                       >

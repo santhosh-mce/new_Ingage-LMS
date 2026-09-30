@@ -1,5 +1,6 @@
 "use client";
 import React, { useState, useEffect } from 'react';
+import { useSearchParams } from 'next/navigation';
 import {
   createAdminCourse,
   updateAdminCourse,
@@ -154,11 +155,19 @@ export interface AdminAddCoursePageProps {
 }
 
 export const AdminAddCoursePage: React.FC<AdminAddCoursePageProps> = ({
-  courseId,
+  courseId: propCourseId,
   onNavigate,
   onShowToast,
 }) => {
+  let paramCourseId: string | undefined = undefined;
+  try {
+    const searchParams = useSearchParams();
+    paramCourseId = searchParams?.get('id') || searchParams?.get('courseId') || undefined;
+  } catch {}
+
+  const courseId = propCourseId || paramCourseId;
   const isEditing = Boolean(courseId);
+  const [loadingCourse, setLoadingCourse] = useState(Boolean(courseId));
 
 
   // Module Expansion State
@@ -943,8 +952,10 @@ export const AdminAddCoursePage: React.FC<AdminAddCoursePageProps> = ({
       .catch(() => {});
 
     if (courseId) {
+      setLoadingCourse(true);
       getAdminCourseById(courseId)
         .then((data) => {
+          if (!data) return;
           setTitle(data.title || '');
           setSlug(data.slug || '');
           setIsManualSlug(Boolean(data.slug));
@@ -957,19 +968,25 @@ export const AdminAddCoursePage: React.FC<AdminAddCoursePageProps> = ({
           setInstructor(data.instructor || 'InGage Lead Instructor');
           setThumbnail(data.thumbnail || '');
           setBanner(data.banner || '');
-          setPrice(data.price || 0);
-          setIsFree(data.price === 0);
+          const rawPrice = Number(data.price);
+          setPrice(isNaN(rawPrice) ? 0 : rawPrice);
+          setIsFree(rawPrice === 0);
           if (data.discountType || data.discount_type) setDiscountType((data.discountType || data.discount_type) as any);
           if (data.discountValue !== undefined || data.discount_value !== undefined) setDiscountValue(Number(data.discountValue ?? data.discount_value ?? 0));
           if (data.status) setCourseStatus(data.status);
           if (data.published !== undefined) setIsPublishedCourse(Boolean(data.published));
-          setSections(data.sections || []);
+          if (Array.isArray(data.sections)) setSections(data.sections);
           setSavedCourseId(courseId);
         })
         .catch((err) => {
           console.error('Failed to load course details', err);
           if (typeof triggerToast === 'function') triggerToast('Failed to load course details.', 'error');
+        })
+        .finally(() => {
+          setLoadingCourse(false);
         });
+    } else {
+      setLoadingCourse(false);
     }
   }, [courseId]);
 
@@ -1064,9 +1081,15 @@ export const AdminAddCoursePage: React.FC<AdminAddCoursePageProps> = ({
       }
 
       if (typeof triggerToast === 'function') {
-        triggerToast(isEditing ? 'Course updated successfully!' : 'Course draft saved successfully!');
+        triggerToast(isEditing ? 'Course updated successfully!' : 'Course created successfully!');
       } else if (onShowToast) {
-        onShowToast(isEditing ? 'Course updated successfully!' : 'Course draft saved successfully!');
+        onShowToast(isEditing ? 'Course updated successfully!' : 'Course created successfully!');
+      }
+
+      if (isEditing) {
+        setTimeout(() => {
+          onNavigate('/admin/courses/ingage');
+        }, 800);
       }
     } catch (err: any) {
       console.error('Save course error:', err);
@@ -1529,6 +1552,15 @@ export const AdminAddCoursePage: React.FC<AdminAddCoursePageProps> = ({
     }
   };
 
+  if (loadingCourse) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[60vh] space-y-4">
+        <Loader2 className="w-8 h-8 text-green-600 animate-spin" />
+        <p className="text-sm font-medium text-slate-500">Loading course data & curriculum...</p>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6 pb-16">
       {/* Top Header */}
@@ -1543,7 +1575,7 @@ export const AdminAddCoursePage: React.FC<AdminAddCoursePageProps> = ({
           </button>
           <div>
             <h1 className="text-2xl font-bold text-slate-900 tracking-tight">
-              {isEditing ? 'Edit Course Curriculum & Pricing' : 'Course Creation Studio'}
+              {isEditing ? 'Edit Course' : 'Add Course'}
             </h1>
             <p className="text-sm text-slate-500 mt-0.5">
               Configure InGage course details, pricing discounts, and multi-module lesson content.
@@ -1560,7 +1592,7 @@ export const AdminAddCoursePage: React.FC<AdminAddCoursePageProps> = ({
             title={isEditing ? 'Update course details & pricing' : 'Save draft'}
           >
             {saving ? <Loader2 className="w-4 h-4 animate-spin text-green-600" /> : <Save className="w-4 h-4 text-slate-600" />}
-            <span>{saving ? 'Saving...' : (isEditing ? 'Update Course' : 'Save Draft')}</span>
+            <span>{saving ? 'Saving...' : (isEditing ? 'Update Course' : 'Create Course')}</span>
           </button>
 
           <button
