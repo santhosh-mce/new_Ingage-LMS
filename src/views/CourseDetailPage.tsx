@@ -1,4 +1,5 @@
 "use client";
+import { formatDurationHuman, formatDurationMMSS, parseDurationToSeconds } from "@/lib/duration";
 import React, { useState, useEffect } from 'react';
 import {
   ArrowLeft,
@@ -78,6 +79,17 @@ export const CourseDetailPage: React.FC<CourseDetailPageProps> = ({
 
   // Unified Access detail state (Direct course purchase, Career path inclusion, or both)
   const [accessDetail, setAccessDetail] = useState<CourseAccessDetail | null>(null);
+
+  const courseTotalVideoDuration = React.useMemo(() => {
+    if (!course?.sections) return '';
+    let totalSec = 0;
+    course.sections.forEach((sec: any) => {
+      (sec.lessons || []).forEach((les: any) => {
+        totalSec += parseDurationToSeconds(les.duration, les.durationSeconds);
+      });
+    });
+    return totalSec > 0 ? formatDurationHuman(totalSec) : '';
+  }, [course?.sections]);
 
   const numericCourseId = Number(courseId);
 
@@ -401,7 +413,7 @@ export const CourseDetailPage: React.FC<CourseDetailPageProps> = ({
                 </span>
                 <span className="px-3 py-1 bg-gray-100 text-gray-700 rounded-full text-xs font-medium flex items-center gap-1">
                   <Clock className="w-3.5 h-3.5 text-gray-500" />
-                  {course.duration}
+                  {courseTotalVideoDuration ? `Total Video Length: ${courseTotalVideoDuration}` : course.duration}
                 </span>
                 {hasAccess && (
                   <span className={`px-3 py-1 text-white rounded-full text-xs font-semibold flex items-center gap-1 shadow-xs ${
@@ -448,7 +460,7 @@ export const CourseDetailPage: React.FC<CourseDetailPageProps> = ({
                   </p>
                 </div>
                 <span className="text-xs font-semibold text-gray-500 bg-gray-50 px-3 py-1.5 rounded-full border border-gray-200/60">
-                  {course.sections?.length || 0} Modules
+                  {course.sections?.length || 0} Modules{courseTotalVideoDuration ? ` • ${courseTotalVideoDuration}` : ''}
                 </span>
               </div>
 
@@ -457,6 +469,12 @@ export const CourseDetailPage: React.FC<CourseDetailPageProps> = ({
                 {course.sections && course.sections.length > 0 ? (
                   course.sections.map((section, idx) => {
                     const isExpanded = expandedSections[section.id];
+                    let moduleSec = 0;
+                    (section.lessons || []).forEach((les: any) => {
+                      moduleSec += parseDurationToSeconds(les.duration, les.durationSeconds);
+                    });
+                    const moduleVideoDuration = moduleSec > 0 ? formatDurationHuman(moduleSec) : '';
+
                     return (
                       <div
                         key={section.id}
@@ -482,7 +500,7 @@ export const CourseDetailPage: React.FC<CourseDetailPageProps> = ({
                           </div>
                           <div className="flex items-center gap-2 ml-4">
                             <span className="text-xs text-gray-500 font-medium whitespace-nowrap">
-                              {section.lessons?.length || 0} lessons
+                              {section.lessons?.length || 0} {section.lessons?.length === 1 ? 'lesson' : 'lessons'}{moduleVideoDuration ? ` • ${moduleVideoDuration}` : ''}
                             </span>
                             {isExpanded ? (
                               <ChevronUp className="w-4 h-4 text-gray-500" />
@@ -496,7 +514,7 @@ export const CourseDetailPage: React.FC<CourseDetailPageProps> = ({
                         {isExpanded && (
                           <div className="divide-y divide-gray-100 bg-white">
                             {section.lessons && section.lessons.length > 0 ? (
-                              section.lessons.map((lesson) => (
+                              section.lessons.map((lesson, lessonIdx) => (
                                 <div
                                   key={lesson.id}
                                   className="px-5 py-3.5 flex items-center justify-between gap-4 hover:bg-gray-50/60 transition-colors"
@@ -513,7 +531,7 @@ export const CourseDetailPage: React.FC<CourseDetailPageProps> = ({
                                     )}
                                     <div>
                                       <div className="text-sm font-semibold text-gray-900 flex items-center gap-2">
-                                        <span>{lesson.title}</span>
+                                        <span>{lessonIdx + 1}. {lesson.title}</span>
                                         {lesson.freePreview && (
                                           <span className="text-[10px] uppercase font-bold text-lime-700 bg-lime-100 px-2 py-0.5 rounded-full">
                                             Free Preview
@@ -529,11 +547,9 @@ export const CourseDetailPage: React.FC<CourseDetailPageProps> = ({
                                   </div>
 
                                   <div className="flex items-center gap-2 shrink-0">
-                                    {lesson.duration && (
-                                      <span className="text-xs text-gray-400 font-medium">
-                                        {lesson.duration}
-                                      </span>
-                                    )}
+                                    <span className="text-xs text-gray-500 font-mono font-medium bg-gray-50 px-2 py-0.5 rounded border border-gray-200/60">
+                                      {lesson.duration || (lesson.durationSeconds ? formatDurationMMSS(lesson.durationSeconds) : '10:00')}
+                                    </span>
                                     {!lesson.locked || hasAccess ? (
                                       <button
                                         onClick={() => onNavigate(`/learn/${course.slug || course.id}`)}
@@ -564,6 +580,12 @@ export const CourseDetailPage: React.FC<CourseDetailPageProps> = ({
                             ) : (
                               <div className="p-4 text-xs text-gray-400 text-center">
                                 Lessons being finalized by instructor.
+                              </div>
+                            )}
+                            {moduleVideoDuration && (
+                              <div className="px-5 py-3 bg-gray-50/70 flex items-center justify-between text-xs text-gray-600 border-t border-gray-100">
+                                <span className="font-semibold text-gray-700">Total:</span>
+                                <span className="font-bold text-gray-900 font-mono">{moduleVideoDuration}</span>
                               </div>
                             )}
                           </div>

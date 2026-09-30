@@ -40,7 +40,30 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
       return NextResponse.json({ error: "Course not found" }, { status: 404 });
     }
 
-    return NextResponse.json(serializeData(course));
+        const serialized: any = serializeData(course);
+    if (serialized.course_sections) {
+      serialized.sections = serialized.course_sections.map((sec: any) => ({
+        id: Number(sec.id),
+        courseId: Number(sec.course_id),
+        title: sec.title,
+        description: sec.description || '',
+        displayOrder: sec.display_order ?? 0,
+        lessons: (sec.course_lessons || []).map((les: any) => ({
+          id: Number(les.id),
+          sectionId: Number(les.section_id),
+          title: les.title,
+          description: les.description || '',
+          lessonType: les.lesson_type || 'VIDEO',
+          contentUrl: les.content_url || null,
+          duration: les.duration || '10m',
+          durationSeconds: les.duration_seconds || 600,
+          displayOrder: les.display_order ?? 0,
+          freePreview: Boolean(les.free_preview),
+          required: Boolean(les.required),
+        })),
+      }));
+    }
+    return NextResponse.json(serialized);
   } catch (error: any) {
     console.error("Get course error:", error);
     return NextResponse.json({ error: "Failed to fetch course" }, { status: 500 });

@@ -36,8 +36,94 @@ import {
   RefreshCw,
   Code,
   FileCheck,
+  Clock,
   X,
 } from 'lucide-react';
+
+
+// Video duration detection and formatting utilities
+export const detectVideoDuration = (file: File): Promise<number> => {
+  return new Promise((resolve) => {
+    try {
+      const video = document.createElement('video');
+      video.preload = 'metadata';
+      const objectUrl = URL.createObjectURL(file);
+      video.src = objectUrl;
+
+      video.onloadedmetadata = () => {
+        URL.revokeObjectURL(objectUrl);
+        const durationSec = Math.round(video.duration || 0);
+        resolve(durationSec);
+      };
+
+      video.onerror = () => {
+        URL.revokeObjectURL(objectUrl);
+        resolve(0);
+      };
+    } catch {
+      resolve(0);
+    }
+  });
+};
+
+export const formatDurationMMSS = (seconds: number): string => {
+  if (!seconds || isNaN(seconds) || seconds <= 0) return '00:00';
+  const hrs = Math.floor(seconds / 3600);
+  const mins = Math.floor((seconds % 3600) / 60);
+  const secs = Math.floor(seconds % 60);
+  if (hrs > 0) {
+    return `${hrs}:${mins < 10 ? '0' : ''}${mins}:${secs < 10 ? '0' : ''}${secs}`;
+  }
+  return `${mins < 10 ? '0' : ''}${mins}:${secs < 10 ? '0' : ''}${secs}`;
+};
+
+export const formatDurationDigital = (seconds: number): string => {
+  if (!seconds || isNaN(seconds) || seconds <= 0) return '00:00:00';
+  const hrs = Math.floor(seconds / 3600);
+  const mins = Math.floor((seconds % 3600) / 60);
+  const secs = Math.floor(seconds % 60);
+  return `${hrs < 10 ? '0' : ''}${hrs}:${mins < 10 ? '0' : ''}${mins}:${secs < 10 ? '0' : ''}${secs}`;
+};
+
+export const formatDurationHuman = (seconds: number): string => {
+  if (!seconds || isNaN(seconds) || seconds <= 0) return '0 min';
+  const hrs = Math.floor(seconds / 3600);
+  const mins = Math.floor((seconds % 3600) / 60);
+  const secs = Math.floor(seconds % 60);
+  if (hrs > 0) {
+    return mins > 0 ? `${hrs} hr ${mins} min` : `${hrs} hr`;
+  }
+  if (mins > 0) {
+    return `${mins} min`;
+  }
+  return `${secs} sec`;
+};
+
+export const parseDurationToSeconds = (dur: any, durationSeconds?: any): number => {
+  if (durationSeconds && typeof durationSeconds === 'number' && durationSeconds > 0) {
+    return durationSeconds;
+  }
+  if (!dur) return 0;
+  if (typeof dur === 'number') return dur;
+  const str = String(dur).trim();
+  if (str.includes(':')) {
+    const parts = str.split(':').map(Number);
+    if (parts.length === 3) {
+      return (parts[0] || 0) * 3600 + (parts[1] || 0) * 60 + (parts[2] || 0);
+    }
+    if (parts.length === 2) {
+      return (parts[0] || 0) * 60 + (parts[1] || 0);
+    }
+  }
+  let total = 0;
+  const hrMatch = str.match(/(\d+)\s*(?:hr|hour|h)/i);
+  if (hrMatch) total += parseInt(hrMatch[1], 10) * 3600;
+  const minMatch = str.match(/(\d+)\s*(?:min|m)/i);
+  if (minMatch) total += parseInt(minMatch[1], 10) * 60;
+  const secMatch = str.match(/(\d+)\s*(?:sec|s)/i);
+  if (secMatch) total += parseInt(secMatch[1], 10);
+  return total;
+};
 
 export interface AdminAddCoursePageProps {
   courseId?: string | number;
@@ -100,6 +186,74 @@ export const AdminAddCoursePage: React.FC<AdminAddCoursePageProps> = ({
     freePreview: false,
     required: true,
   });
+
+  
+  // Dedicated Video Lesson Modal State
+  const [activeSectionForVideoLesson, setActiveSectionForVideoLesson] = useState<any>(null);
+  const [videoLessonForm, setVideoLessonForm] = useState<{
+    title: string;
+    file: File | null;
+    fileName: string;
+    videoUrl: string;
+    duration: string;
+    durationSeconds: number;
+    detectedDurationFormatted: string;
+    uploadPercent: number;
+    uploadStatus: 'idle' | 'detecting' | 'uploading' | 'uploaded' | 'error';
+    errorMessage: string | null;
+    freePreview: boolean;
+    required: boolean;
+  }>({
+    title: '',
+    file: null,
+    fileName: '',
+    videoUrl: '',
+    duration: '00:00',
+    durationSeconds: 0,
+    detectedDurationFormatted: '',
+    uploadPercent: 0,
+    uploadStatus: 'idle',
+    errorMessage: null,
+    freePreview: false,
+    required: true,
+  });
+
+  // Calculate total duration in seconds for a specific module/section
+  const calculateSectionVideoDuration = (sec: any): number => {
+    if (!sec || !sec.lessons) return 0;
+    return sec.lessons.reduce((total: number, les: any) => {
+      if (les.lessonType === 'VIDEO') {
+        return total + parseDurationToSeconds(les.duration, les.durationSeconds);
+      }
+      return total;
+    }, 0);
+  };
+
+  // Calculate course totals across all sections
+  const courseStats = React.useMemo(() => {
+    let totalLessonsCount = 0;
+    let totalVideoLessonsCount = 0;
+    let totalVideoDurationSec = 0;
+
+    sections.forEach((sec) => {
+      (sec.lessons || []).forEach((les: any) => {
+        totalLessonsCount += 1;
+        if (les.lessonType === 'VIDEO') {
+          totalVideoLessonsCount += 1;
+          totalVideoDurationSec += parseDurationToSeconds(les.duration, les.durationSeconds);
+        }
+      });
+    });
+
+    return {
+      modulesCount: sections.length,
+      lessonsCount: totalLessonsCount,
+      videoLessonsCount: totalVideoLessonsCount,
+      totalVideoSeconds: totalVideoDurationSec,
+      formattedTotalDuration: formatDurationHuman(totalVideoDurationSec),
+      formattedDigitalTotal: formatDurationDigital(totalVideoDurationSec),
+    };
+  }, [sections]);
 
   const [activeSectionForLesson, setActiveSectionForLesson] = useState<any>(null);
   const [lessonForm, setLessonForm] = useState({
@@ -212,14 +366,31 @@ export const AdminAddCoursePage: React.FC<AdminAddCoursePageProps> = ({
     setUploadProgress(`Uploading ${file.name}...`);
     try {
       const categoryType = (target === 'lessonVideo' || target === 'editLessonVideo') ? 'video' : 'thumbnail';
+      // Automatically detect video duration if video is uploaded for a lesson
+      let detectedSec = 0;
+      if (target === 'lessonVideo' || target === 'editLessonVideo') {
+        try {
+          detectedSec = await detectVideoDuration(file);
+        } catch {}
+      }
+
       const res = await uploadMediaFile(file, categoryType);
       if (res && res.url) {
         if (target === 'thumbnail') setThumbnail(res.url);
         else if (target === 'banner') setBanner(res.url);
-        else if (target === 'lessonVideo')
-          setLessonForm((prev) => ({ ...prev, contentUrl: res.url }));
-        else if (target === 'editLessonVideo')
-          setEditLessonForm((prev) => ({ ...prev, contentUrl: res.url }));
+        else if (target === 'lessonVideo') {
+          setLessonForm((prev) => ({
+            ...prev,
+            contentUrl: res.url,
+            ...(detectedSec > 0 ? { durationSeconds: detectedSec, duration: formatDurationMMSS(detectedSec) } : {}),
+          }));
+        } else if (target === 'editLessonVideo') {
+          setEditLessonForm((prev) => ({
+            ...prev,
+            contentUrl: res.url,
+            ...(detectedSec > 0 ? { durationSeconds: detectedSec, duration: formatDurationMMSS(detectedSec) } : {}),
+          }));
+        }
         if (onShowToast) onShowToast('File uploaded successfully!');
       } else {
         const errorMsg = res?.error || 'Upload failed.';
@@ -394,6 +565,131 @@ export const AdminAddCoursePage: React.FC<AdminAddCoursePageProps> = ({
     }
   };
 
+  
+  const handleVideoFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = '';
+
+    const validExtensions = /\.(mp4|webm|mov|mkv)$/i;
+    const isVideoMime = file.type.startsWith('video/') || validExtensions.test(file.name);
+    if (!isVideoMime) {
+      setVideoLessonForm((prev) => ({
+        ...prev,
+        uploadStatus: 'error',
+        errorMessage: 'Unsupported video format. Please upload MP4, WebM, or MOV.',
+      }));
+      return;
+    }
+
+    const cleanFileName = file.name.replace(/\.[^/.]+$/, '').replace(/[-_]+/g, ' ').trim();
+
+    setVideoLessonForm((prev) => ({
+      ...prev,
+      file,
+      fileName: file.name,
+      title: prev.title.trim() ? prev.title : cleanFileName,
+      uploadStatus: 'detecting',
+      uploadPercent: 0,
+      errorMessage: null,
+    }));
+
+    try {
+      const durationSec = await detectVideoDuration(file);
+      const formatted = formatDurationMMSS(durationSec);
+      setVideoLessonForm((prev) => ({
+        ...prev,
+        durationSeconds: durationSec,
+        duration: formatted,
+        detectedDurationFormatted: formatted,
+        uploadStatus: 'idle',
+      }));
+    } catch {
+      setVideoLessonForm((prev) => ({
+        ...prev,
+        uploadStatus: 'idle',
+      }));
+    }
+  };
+
+  const handleUploadAndCreateVideoLesson = async () => {
+    if (!activeSectionForVideoLesson) return;
+    if (!videoLessonForm.title.trim()) {
+      alert('Lesson title is required.');
+      return;
+    }
+    if (!videoLessonForm.file && !videoLessonForm.videoUrl) {
+      alert('Please select a video file or provide a video URL.');
+      return;
+    }
+
+    try {
+      setVideoLessonForm((prev) => ({ ...prev, uploadStatus: 'uploading', uploadPercent: 25 }));
+      let finalUrl = videoLessonForm.videoUrl;
+
+      if (videoLessonForm.file) {
+        setVideoLessonForm((prev) => ({ ...prev, uploadPercent: 45 }));
+        const res = await uploadMediaFile(videoLessonForm.file, 'video');
+        if (!res || !res.url) {
+          throw new Error(res?.error || 'Video upload failed.');
+        }
+        finalUrl = res.url;
+        setVideoLessonForm((prev) => ({ ...prev, uploadPercent: 85 }));
+      }
+
+      const payload = {
+        title: videoLessonForm.title.trim(),
+        lessonType: 'VIDEO',
+        contentUrl: finalUrl,
+        duration: videoLessonForm.duration || '00:00',
+        durationSeconds: videoLessonForm.durationSeconds || 0,
+        freePreview: videoLessonForm.freePreview,
+        required: videoLessonForm.required,
+      };
+
+      const created = await addCourseLesson(activeSectionForVideoLesson.id, payload);
+
+      setSections(
+        sections.map((s) => {
+          if (s.id === activeSectionForVideoLesson.id) {
+            return {
+              ...s,
+              lessons: [...(s.lessons || []), created],
+            };
+          }
+          return s;
+        })
+      );
+
+      setActiveSectionForVideoLesson(null);
+      setVideoLessonForm({
+        title: '',
+        file: null,
+        fileName: '',
+        videoUrl: '',
+        duration: '00:00',
+        durationSeconds: 0,
+        detectedDurationFormatted: '',
+        uploadPercent: 100,
+        uploadStatus: 'idle',
+        errorMessage: null,
+        freePreview: false,
+        required: true,
+      });
+
+      if (onShowToast) onShowToast('Video lesson created successfully!');
+    } catch (err: any) {
+      console.error(err);
+      const msg = err?.response?.data?.error || err?.message || 'Video upload failed.';
+      setVideoLessonForm((prev) => ({
+        ...prev,
+        uploadStatus: 'error',
+        errorMessage: msg,
+      }));
+      if (onShowToast) onShowToast(`Error: ${msg}`);
+    }
+  };
+
   const handleAddLesson = async () => {
     if (!activeSectionForLesson) return;
     if (!lessonForm.title.trim()) {
@@ -432,7 +728,7 @@ export const AdminAddCoursePage: React.FC<AdminAddCoursePageProps> = ({
   };
 
   const handleDeleteLesson = async (sectionId: number, lessonId: number) => {
-    if (!window.confirm('Delete this lesson?')) return;
+    if (!window.confirm('Are you sure you want to delete this lesson?')) return;
     try {
       await deleteCourseLesson(lessonId);
       setSections(
@@ -446,7 +742,7 @@ export const AdminAddCoursePage: React.FC<AdminAddCoursePageProps> = ({
           return s;
         })
       );
-      if (onShowToast) onShowToast('Lesson deleted.');
+      if (onShowToast) onShowToast('Lesson removed');
     } catch {
       if (onShowToast) onShowToast('Failed to delete lesson.');
     }
@@ -547,7 +843,13 @@ export const AdminAddCoursePage: React.FC<AdminAddCoursePageProps> = ({
   const handleSaveEditLesson = async () => {
     if (!editingLesson || !editLessonForm.title.trim()) return;
     try {
-      const updated = await updateCourseLesson(editingLesson.lesson.id, editLessonForm);
+      const computedSec = parseDurationToSeconds(editLessonForm.duration, editLessonForm.durationSeconds);
+      const payloadToSave = {
+        ...editLessonForm,
+        durationSeconds: computedSec,
+        duration: editLessonForm.duration || formatDurationMMSS(computedSec),
+      };
+      const updated = await updateCourseLesson(editingLesson.lesson.id, payloadToSave);
       setSections(
         sections.map((s) => {
           if (s.id === editingLesson.sectionId) {
@@ -921,6 +1223,7 @@ export const AdminAddCoursePage: React.FC<AdminAddCoursePageProps> = ({
 
       {/* Course Content Builder (Sections & Lessons) */}
       <div className="bg-white border border-slate-200 rounded-2xl p-6 sm:p-8 shadow-xs space-y-6">
+        {/* Header & Course Summary */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
             <h2 className="text-base font-bold text-slate-900 flex items-center gap-2">
@@ -933,193 +1236,364 @@ export const AdminAddCoursePage: React.FC<AdminAddCoursePageProps> = ({
           </div>
 
           <button
+            type="button"
             onClick={() => {
               if (!savedCourseId) {
                 handleSaveDraft();
               }
               setIsAddingSection(true);
             }}
-            className="flex items-center gap-1.5 px-3.5 py-2 bg-green-50 hover:bg-green-100 text-green-700 text-xs font-semibold rounded-xl border border-green-200 transition-colors cursor-pointer self-start sm:self-auto"
+            className="flex items-center gap-1.5 px-3.5 py-2 bg-green-50 hover:bg-green-100 text-green-700 text-xs font-semibold rounded-xl border border-green-200 transition-colors cursor-pointer self-start sm:self-auto shadow-2xs"
           >
             <FolderPlus className="w-4 h-4" />
             <span>+ Add Module / Section</span>
           </button>
         </div>
 
+        {/* Top Curriculum Statistics Banner */}
+        {sections.length > 0 && (
+          <div className="bg-slate-900 text-white rounded-2xl p-4 sm:p-5 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 shadow-sm border border-slate-800">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-green-500/20 text-green-400 flex items-center justify-center font-bold shrink-0">
+                <Layers className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-white tracking-wide">Course Curriculum Summary</h3>
+                <p className="text-xs text-slate-300 mt-0.5 flex flex-wrap items-center gap-2">
+                  <span><strong>{courseStats.modulesCount}</strong> {courseStats.modulesCount === 1 ? 'Module' : 'Modules'}</span>
+                  <span className="text-slate-500">•</span>
+                  <span><strong>{courseStats.lessonsCount}</strong> {courseStats.lessonsCount === 1 ? 'Lesson' : 'Lessons'}</span>
+                  <span className="text-slate-500">•</span>
+                  <span><strong>{courseStats.videoLessonsCount}</strong> Video {courseStats.videoLessonsCount === 1 ? 'Lesson' : 'Lessons'}</span>
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2.5 bg-slate-800/80 px-4 py-2 rounded-xl border border-slate-700/60 shrink-0">
+              <Video className="w-4 h-4 text-green-400 shrink-0" />
+              <div className="text-right">
+                <div className="text-[10px] text-slate-400 uppercase tracking-wider font-semibold">Total Video Duration</div>
+                <div className="text-xs sm:text-sm font-mono font-bold text-green-400">
+                  {courseStats.formattedTotalDuration}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Sections List */}
-        <div className="space-y-4">
+        <div className="space-y-6">
           {sections.length === 0 ? (
-            <div className="py-10 text-center text-xs text-slate-400 border-2 border-dashed border-slate-200 rounded-2xl space-y-2">
-              <Layers className="w-8 h-8 text-slate-300 mx-auto" />
-              <p className="font-medium text-slate-600">No curriculum sections created yet.</p>
-              <p className="text-slate-400">Click &quot;+ Add Module / Section&quot; to begin building lessons.</p>
+            <div className="py-12 text-center text-xs text-slate-400 border-2 border-dashed border-slate-200 rounded-2xl space-y-3 bg-slate-50/50">
+              <div className="w-12 h-12 rounded-2xl bg-white text-slate-400 flex items-center justify-center mx-auto shadow-2xs border border-slate-200">
+                <Layers className="w-6 h-6" />
+              </div>
+              <div>
+                <p className="font-semibold text-sm text-slate-700">No curriculum sections created yet.</p>
+                <p className="text-slate-400 mt-0.5">Click &quot;+ Add Module / Section&quot; to begin building lessons.</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  if (!savedCourseId) {
+                    handleSaveDraft();
+                  }
+                  setIsAddingSection(true);
+                }}
+                className="inline-flex items-center gap-1.5 px-4 py-2 bg-green-600 hover:bg-green-700 text-white text-xs font-bold rounded-xl shadow-xs transition-colors cursor-pointer"
+              >
+                <FolderPlus className="w-4 h-4" />
+                <span>+ Add Module / Section</span>
+              </button>
             </div>
           ) : (
-            sections.map((sec, secIdx) => (
-              <div
-                key={sec.id}
-                className="bg-slate-50 border border-slate-200 rounded-2xl p-4 sm:p-5 space-y-4"
-              >
-                {/* Section Header */}
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-200/80 pb-3">
-                  <div className="flex items-center gap-2.5">
-                    <span className="w-6 h-6 rounded-lg bg-green-600 text-white font-bold text-xs flex items-center justify-center shrink-0">
-                      {secIdx + 1}
-                    </span>
-                    <div>
-                      <h3 className="text-sm font-bold text-slate-900">{sec.title}</h3>
-                      {sec.description && (
-                        <p className="text-[11px] text-slate-500">{sec.description}</p>
-                      )}
+            sections.map((sec, secIdx) => {
+              const moduleVideoSeconds = calculateSectionVideoDuration(sec);
+              const digitalModuleDuration = formatDurationDigital(moduleVideoSeconds);
+              const humanModuleDuration = formatDurationHuman(moduleVideoSeconds);
+
+              return (
+                <div
+                  key={sec.id}
+                  className="bg-slate-50 border border-slate-200 rounded-2xl p-4 sm:p-6 space-y-4 shadow-2xs transition-all hover:border-slate-300"
+                >
+                  {/* Module / Section Header */}
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-200/80 pb-3.5">
+                    <div className="flex items-center gap-3">
+                      <span className="w-7 h-7 rounded-lg bg-green-600 text-white font-bold text-xs flex items-center justify-center shrink-0 shadow-2xs">
+                        {secIdx + 1}
+                      </span>
+                      <div>
+                        <div className="text-[11px] font-bold uppercase tracking-wider text-green-800">
+                          Module {secIdx + 1}
+                        </div>
+                        <h3 className="text-sm sm:text-base font-bold text-slate-900">{sec.title}</h3>
+                        {sec.description && (
+                          <p className="text-[11px] text-slate-500 mt-0.5">{sec.description}</p>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="flex items-center flex-wrap gap-1.5 self-end sm:self-auto">
+                      {/* Reorder Section Up */}
+                      <button
+                        type="button"
+                        onClick={() => handleMoveSection(secIdx, 'up')}
+                        disabled={secIdx === 0}
+                        className="p-1.5 text-slate-400 hover:text-slate-700 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                        title="Move Module Up"
+                      >
+                        <ChevronUp className="w-4 h-4" />
+                      </button>
+
+                      {/* Reorder Section Down */}
+                      <button
+                        type="button"
+                        onClick={() => handleMoveSection(secIdx, 'down')}
+                        disabled={secIdx === sections.length - 1}
+                        className="p-1.5 text-slate-400 hover:text-slate-700 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                        title="Move Module Down"
+                      >
+                        <ChevronDown className="w-4 h-4" />
+                      </button>
+
+                      {/* Edit Section */}
+                      <button
+                        type="button"
+                        onClick={() => handleOpenEditSection(sec)}
+                        className="p-1.5 text-slate-500 hover:text-green-700 transition-colors cursor-pointer"
+                        title="Edit Module Details"
+                      >
+                        <Edit2 className="w-3.5 h-3.5" />
+                      </button>
+
+                      {/* Primary Green Action: + Add Video Lesson */}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setActiveSectionForVideoLesson(sec);
+                          setVideoLessonForm({
+                            title: '',
+                            file: null,
+                            fileName: '',
+                            videoUrl: '',
+                            duration: '00:00',
+                            durationSeconds: 0,
+                            detectedDurationFormatted: '',
+                            uploadPercent: 0,
+                            uploadStatus: 'idle',
+                            errorMessage: null,
+                            freePreview: false,
+                            required: true,
+                          });
+                        }}
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-green-600 hover:bg-green-700 text-white text-xs font-bold shadow-xs transition-colors cursor-pointer"
+                      >
+                        <Video className="w-3.5 h-3.5" />
+                        <span>+ Add Video Lesson</span>
+                      </button>
+
+                      {/* Secondary: Other Content Types */}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setActiveSectionForLesson(sec);
+                        }}
+                        className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-white hover:bg-slate-100 text-slate-700 text-xs font-semibold border border-slate-200 transition-colors cursor-pointer"
+                        title="Add PDF, Quiz, Text, or Assignment"
+                      >
+                        <Plus className="w-3.5 h-3.5 text-slate-500" />
+                        <span>Other Lesson</span>
+                      </button>
+
+                      {/* Delete Section */}
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteSection(sec.id)}
+                        className="p-1.5 text-slate-400 hover:text-rose-600 transition-colors cursor-pointer"
+                        title="Delete Section"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-1.5 self-end sm:self-auto">
-                    {/* Reorder Section Up */}
-                    <button
-                      type="button"
-                      onClick={() => handleMoveSection(secIdx, 'up')}
-                      disabled={secIdx === 0}
-                      className="p-1.5 text-slate-400 hover:text-slate-700 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-                      title="Move Module Up"
-                    >
-                      <ChevronUp className="w-4 h-4" />
-                    </button>
-
-                    {/* Reorder Section Down */}
-                    <button
-                      type="button"
-                      onClick={() => handleMoveSection(secIdx, 'down')}
-                      disabled={secIdx === sections.length - 1}
-                      className="p-1.5 text-slate-400 hover:text-slate-700 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-                      title="Move Module Down"
-                    >
-                      <ChevronDown className="w-4 h-4" />
-                    </button>
-
-                    {/* Edit Section */}
-                    <button
-                      type="button"
-                      onClick={() => handleOpenEditSection(sec)}
-                      className="p-1.5 text-slate-500 hover:text-green-700 transition-colors cursor-pointer"
-                      title="Edit Module Details"
-                    >
-                      <Edit2 className="w-3.5 h-3.5" />
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setActiveSectionForLesson(sec);
-                      }}
-                      className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-green-100 hover:bg-green-200 text-green-800 text-xs font-semibold transition-colors cursor-pointer"
-                    >
-                      <Plus className="w-3.5 h-3.5" />
-                      <span>Add Lesson</span>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => handleDeleteSection(sec.id)}
-                      className="p-1.5 text-slate-400 hover:text-rose-600 transition-colors"
-                      title="Delete Section"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                </div>
-
-                {/* Lessons in Section */}
-                <div className="space-y-2 pl-2 sm:pl-4">
-                  {sec.lessons?.length === 0 ? (
-                    <p className="text-[11px] text-slate-400 italic py-2">
-                      No lessons inside this module yet.
-                    </p>
-                  ) : (
-                    sec.lessons?.map((les: any, lesIdx: number) => (
-                      <div
-                        key={les.id}
-                        className="flex items-center justify-between p-2.5 bg-white border border-slate-200 rounded-xl text-xs hover:border-green-300 transition-all shadow-xs"
-                      >
-                        <div className="flex items-center gap-2.5 overflow-hidden">
-                          {les.lessonType === 'VIDEO' ? (
-                            <Video className="w-4 h-4 text-green-600 shrink-0" />
-                          ) : les.lessonType === 'QUIZ' ? (
-                            <HelpCircle className="w-4 h-4 text-purple-600 shrink-0" />
-                          ) : les.lessonType === 'PDF' ? (
-                            <FileCheck className="w-4 h-4 text-sky-600 shrink-0" />
-                          ) : les.lessonType === 'ASSIGNMENT' ? (
-                            <Code className="w-4 h-4 text-emerald-600 shrink-0" />
-                          ) : (
-                            <FileText className="w-4 h-4 text-amber-600 shrink-0" />
-                          )}
-                          <span className="font-semibold text-slate-900 truncate">
-                            {lesIdx + 1}. {les.title}
-                          </span>
-                          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 uppercase shrink-0">
-                            {les.lessonType || 'VIDEO'}
-                          </span>
-                          {les.duration && (
-                            <span className="text-[10px] text-slate-400 shrink-0">
-                              ({les.duration})
-                            </span>
-                          )}
-                          {les.freePreview && (
-                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-green-100 text-green-800 border border-green-200 uppercase font-bold shrink-0">
-                              Free Preview
-                            </span>
-                          )}
-                        </div>
-
-                        <div className="flex items-center gap-1 shrink-0">
-                          {/* Reorder Lesson Up */}
-                          <button
-                            type="button"
-                            onClick={() => handleMoveLesson(sec.id, lesIdx, 'up')}
-                            disabled={lesIdx === 0}
-                            className="p-1 text-slate-400 hover:text-slate-700 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-                            title="Move Lesson Up"
-                          >
-                            <ChevronUp className="w-3.5 h-3.5" />
-                          </button>
-
-                          {/* Reorder Lesson Down */}
-                          <button
-                            type="button"
-                            onClick={() => handleMoveLesson(sec.id, lesIdx, 'down')}
-                            disabled={lesIdx === (sec.lessons?.length || 1) - 1}
-                            className="p-1 text-slate-400 hover:text-slate-700 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-                            title="Move Lesson Down"
-                          >
-                            <ChevronDown className="w-3.5 h-3.5" />
-                          </button>
-
-                          {/* Edit Lesson */}
-                          <button
-                            type="button"
-                            onClick={() => handleOpenEditLesson(sec.id, les)}
-                            className="p-1 text-slate-400 hover:text-green-700 transition-colors"
-                            title="Edit Lesson"
-                          >
-                            <Edit2 className="w-3.5 h-3.5" />
-                          </button>
-
-                          {/* Delete Lesson */}
-                          <button
-                            type="button"
-                            onClick={() => handleDeleteLesson(sec.id, les.id)}
-                            className="text-slate-400 hover:text-rose-600 p-1 transition-colors"
-                            title="Delete Lesson"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
+                  {/* Lessons List in Section */}
+                  <div className="space-y-2.5">
+                    {!sec.lessons || sec.lessons.length === 0 ? (
+                      <div className="py-8 text-center text-xs text-slate-400 border border-dashed border-slate-200 rounded-xl space-y-2 bg-white">
+                        <p className="font-semibold text-slate-600">No lessons added yet.</p>
+                        <p className="text-[11px] text-slate-400">Click below to upload the first video lesson for this module.</p>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setActiveSectionForVideoLesson(sec);
+                            setVideoLessonForm({
+                              title: '',
+                              file: null,
+                              fileName: '',
+                              videoUrl: '',
+                              duration: '00:00',
+                              durationSeconds: 0,
+                              detectedDurationFormatted: '',
+                              uploadPercent: 0,
+                              uploadStatus: 'idle',
+                              errorMessage: null,
+                              freePreview: false,
+                              required: true,
+                            });
+                          }}
+                          className="inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-green-600 hover:bg-green-700 text-white rounded-lg text-xs font-bold shadow-2xs transition-colors cursor-pointer mt-1"
+                        >
+                          <Video className="w-3.5 h-3.5" />
+                          <span>+ Add Video Lesson</span>
+                        </button>
                       </div>
-                    ))
+                    ) : (
+                      sec.lessons.map((les: any, lesIdx: number) => {
+                        const displayDuration = les.duration || (les.durationSeconds ? formatDurationMMSS(les.durationSeconds) : '00:00');
+
+                        return (
+                          <div
+                            key={les.id}
+                            className="flex flex-col sm:flex-row sm:items-center justify-between p-3 sm:px-4 bg-white border border-slate-200 rounded-xl text-xs hover:border-green-300 transition-all shadow-xs gap-3"
+                          >
+                            {/* Lesson Number, Icon & Title */}
+                            <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                              <span className="text-slate-400 font-bold shrink-0 text-xs">
+                                Lesson {lesIdx + 1}
+                              </span>
+
+                              {les.lessonType === 'VIDEO' ? (
+                                <div className="w-6 h-6 rounded-lg bg-green-100 text-green-700 flex items-center justify-center shrink-0">
+                                  <Video className="w-3.5 h-3.5" />
+                                </div>
+                              ) : les.lessonType === 'QUIZ' ? (
+                                <div className="w-6 h-6 rounded-lg bg-purple-100 text-purple-700 flex items-center justify-center shrink-0">
+                                  <HelpCircle className="w-3.5 h-3.5" />
+                                </div>
+                              ) : les.lessonType === 'PDF' ? (
+                                <div className="w-6 h-6 rounded-lg bg-sky-100 text-sky-700 flex items-center justify-center shrink-0">
+                                  <FileCheck className="w-3.5 h-3.5" />
+                                </div>
+                              ) : les.lessonType === 'ASSIGNMENT' ? (
+                                <div className="w-6 h-6 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0">
+                                  <Code className="w-3.5 h-3.5" />
+                                </div>
+                              ) : (
+                                <div className="w-6 h-6 rounded-lg bg-amber-100 text-amber-700 flex items-center justify-center shrink-0">
+                                  <FileText className="w-3.5 h-3.5" />
+                                </div>
+                              )}
+
+                              <div className="min-w-0 flex items-center gap-2 flex-wrap">
+                                <span className="font-semibold text-slate-900 truncate">
+                                  {les.title}
+                                </span>
+                                {les.freePreview && (
+                                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-green-100 text-green-800 border border-green-200 uppercase font-bold shrink-0">
+                                    Free Preview
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+
+                            {/* Duration & Actions */}
+                            <div className="flex items-center justify-between sm:justify-end gap-3 shrink-0 pt-2 sm:pt-0 border-t sm:border-t-0 border-slate-100">
+                              {/* Video Duration */}
+                              <div className="flex items-center gap-1.5 font-mono text-xs font-bold text-slate-700 bg-slate-50 px-2.5 py-1 rounded-lg border border-slate-200 shadow-2xs">
+                                <Clock className="w-3 h-3 text-slate-400" />
+                                <span>{displayDuration}</span>
+                              </div>
+
+                              {/* Ordering & Management Buttons */}
+                              <div className="flex items-center gap-1">
+                                <button
+                                  type="button"
+                                  onClick={() => handleMoveLesson(sec.id, lesIdx, 'up')}
+                                  disabled={lesIdx === 0}
+                                  className="p-1.5 text-slate-400 hover:text-slate-700 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                                  title="Move Lesson Up"
+                                >
+                                  <ChevronUp className="w-3.5 h-3.5" />
+                                </button>
+
+                                <button
+                                  type="button"
+                                  onClick={() => handleMoveLesson(sec.id, lesIdx, 'down')}
+                                  disabled={lesIdx === (sec.lessons?.length || 1) - 1}
+                                  className="p-1.5 text-slate-400 hover:text-slate-700 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                                  title="Move Lesson Down"
+                                >
+                                  <ChevronDown className="w-3.5 h-3.5" />
+                                </button>
+
+                                <button
+                                  type="button"
+                                  onClick={() => handleOpenEditLesson(sec.id, les)}
+                                  className="p-1.5 text-slate-400 hover:text-green-700 transition-colors cursor-pointer"
+                                  title="Edit Lesson"
+                                >
+                                  <Edit2 className="w-3.5 h-3.5" />
+                                </button>
+
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteLesson(sec.id, les.id)}
+                                  className="p-1.5 text-slate-400 hover:text-rose-600 transition-colors cursor-pointer"
+                                  title="Delete Lesson"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+
+                  {/* Module Footer: Total Duration & Add Lesson */}
+                  {sec.lessons && sec.lessons.length > 0 && (
+                    <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 pt-3 border-t border-slate-200/80 text-xs text-slate-600">
+                      <div className="flex items-center gap-2">
+                        <span className="font-semibold text-slate-700">Total video duration:</span>
+                        <span className="font-mono font-bold text-slate-900 bg-white px-2 py-0.5 rounded-md border border-slate-200 shadow-2xs">
+                          {digitalModuleDuration}
+                        </span>
+                        <span className="text-[11px] text-slate-500 font-medium">
+                          ({humanModuleDuration})
+                        </span>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setActiveSectionForVideoLesson(sec);
+                          setVideoLessonForm({
+                            title: '',
+                            file: null,
+                            fileName: '',
+                            videoUrl: '',
+                            duration: '00:00',
+                            durationSeconds: 0,
+                            detectedDurationFormatted: '',
+                            uploadPercent: 0,
+                            uploadStatus: 'idle',
+                            errorMessage: null,
+                            freePreview: false,
+                            required: true,
+                          });
+                        }}
+                        className="inline-flex items-center gap-1.5 text-green-700 hover:text-green-800 font-bold cursor-pointer text-xs"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                        <span>Add Video Lesson</span>
+                      </button>
+                    </div>
                   )}
                 </div>
-              </div>
-            ))
+              );
+            })
           )}
         </div>
       </div>
@@ -1154,23 +1628,201 @@ export const AdminAddCoursePage: React.FC<AdminAddCoursePageProps> = ({
 
             <div className="flex justify-end gap-2 pt-2">
               <button
+                type="button"
                 onClick={() => setIsAddingSection(false)}
                 className="px-4 py-2 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 rounded-xl text-xs font-semibold cursor-pointer transition"
               >
                 Cancel
               </button>
               <button
+                type="button"
                 onClick={handleAddSection}
                 className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white font-bold rounded-xl text-xs cursor-pointer shadow-xs transition"
               >
-                Add Module
+                Create Module
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Modal: Add Lesson */}
+      {/* Modal: Dedicated Add Video Lesson */}
+      {activeSectionForVideoLesson && (
+        <div className="fixed inset-0 bg-slate-950/50 backdrop-blur-xs flex items-center justify-center p-4 z-50">
+          <div className="bg-white border border-slate-200 rounded-2xl p-6 max-w-lg w-full space-y-4 shadow-xl max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-lg bg-green-100 text-green-700 flex items-center justify-center font-bold">
+                  <Video className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-slate-900">Add Video Lesson</h3>
+                  <p className="text-xs text-slate-500">Module: {activeSectionForVideoLesson.title}</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setActiveSectionForVideoLesson(null)}
+                className="text-slate-400 hover:text-slate-600 p-1 rounded-lg"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              {/* Lesson Title */}
+              <div>
+                <label className="text-xs font-semibold text-slate-700 block mb-1">
+                  Lesson Title *
+                </label>
+                <input
+                  type="text"
+                  value={videoLessonForm.title}
+                  onChange={(e) =>
+                    setVideoLessonForm((prev) => ({ ...prev, title: e.target.value }))
+                  }
+                  placeholder="e.g. Introduction to Deep Learning"
+                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-green-500/20 focus:border-green-600 transition"
+                />
+              </div>
+
+              {/* Video Upload Area */}
+              <div>
+                <label className="text-xs font-semibold text-slate-700 block mb-1">
+                  Video *
+                </label>
+                <div className="border-2 border-dashed border-slate-200 hover:border-green-400 rounded-2xl p-5 text-center bg-slate-50/50 transition-colors">
+                  <input
+                    type="file"
+                    id="video-lesson-file-input"
+                    accept="video/mp4,video/webm,video/quicktime,video/x-matroska,.mp4,.webm,.mov,.mkv"
+                    onChange={handleVideoFileSelect}
+                    className="hidden"
+                  />
+                  <label
+                    htmlFor="video-lesson-file-input"
+                    className="cursor-pointer flex flex-col items-center justify-center gap-2"
+                  >
+                    <div className="w-12 h-12 rounded-full bg-green-50 text-green-600 flex items-center justify-center">
+                      <Upload className="w-6 h-6" />
+                    </div>
+                    <div>
+                      <p className="text-xs font-bold text-slate-800">
+                        {videoLessonForm.fileName ? 'Change Selected Video' : 'Upload Video'}
+                      </p>
+                      <p className="text-[11px] text-slate-400 mt-0.5">
+                        Supported video formats: MP4 / WebM / MOV
+                      </p>
+                    </div>
+                  </label>
+                </div>
+
+                {/* Detected Duration & File Info */}
+                {videoLessonForm.fileName && (
+                  <div className="mt-3 p-3 bg-green-50/80 border border-green-200 rounded-xl space-y-2">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="font-semibold text-slate-700">Uploaded Video:</span>
+                      <span className="font-medium text-slate-900 truncate max-w-[200px]">
+                        {videoLessonForm.fileName}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between text-xs pt-1 border-t border-green-200/60">
+                      <span className="font-semibold text-green-900 flex items-center gap-1.5">
+                        <Sparkles className="w-3.5 h-3.5 text-green-600" />
+                        Detected Duration:
+                      </span>
+                      <span className="font-mono font-bold text-green-800 bg-white px-2 py-0.5 rounded border border-green-300">
+                        {videoLessonForm.detectedDurationFormatted || (videoLessonForm.uploadStatus === 'detecting' ? 'Detecting...' : '00:00')}
+                      </span>
+                    </div>
+                  </div>
+                )}
+
+                {/* Upload Progress Bar */}
+                {videoLessonForm.uploadStatus === 'uploading' && (
+                  <div className="mt-3 space-y-1">
+                    <div className="flex justify-between text-xs font-semibold text-slate-700">
+                      <span>Uploading...</span>
+                      <span>{videoLessonForm.uploadPercent}%</span>
+                    </div>
+                    <div className="w-full bg-slate-200 rounded-full h-2 overflow-hidden">
+                      <div
+                        className="bg-green-600 h-2 rounded-full transition-all duration-300"
+                        style={{ width: `${videoLessonForm.uploadPercent}%` }}
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {videoLessonForm.errorMessage && (
+                  <p className="text-xs text-rose-600 mt-2 flex items-center gap-1 font-medium">
+                    <AlertCircle className="w-4 h-4" />
+                    {videoLessonForm.errorMessage}
+                  </p>
+                )}
+              </div>
+
+              {/* Toggles */}
+              <div className="flex items-center justify-between pt-2 border-t border-slate-100">
+                <label className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={videoLessonForm.freePreview}
+                    onChange={(e) =>
+                      setVideoLessonForm((prev) => ({ ...prev, freePreview: e.target.checked }))
+                    }
+                    className="w-4 h-4 rounded text-green-600 focus:ring-green-500 border-slate-300"
+                  />
+                  <span>Mark as Free Preview</span>
+                </label>
+
+                <label className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={videoLessonForm.required}
+                    onChange={(e) =>
+                      setVideoLessonForm((prev) => ({ ...prev, required: e.target.checked }))
+                    }
+                    className="w-4 h-4 rounded text-green-600 focus:ring-green-500 border-slate-300"
+                  />
+                  <span>Required for Completion</span>
+                </label>
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-4 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setActiveSectionForVideoLesson(null)}
+                className="px-4 py-2 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 rounded-xl text-xs font-semibold cursor-pointer transition"
+                disabled={videoLessonForm.uploadStatus === 'uploading'}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleUploadAndCreateVideoLesson}
+                disabled={videoLessonForm.uploadStatus === 'uploading'}
+                className="flex items-center gap-1.5 px-4 py-2 bg-green-600 hover:bg-green-700 text-white font-bold rounded-xl text-xs cursor-pointer shadow-xs transition disabled:opacity-50"
+              >
+                {videoLessonForm.uploadStatus === 'uploading' ? (
+                  <>
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                    <span>Uploading & Creating...</span>
+                  </>
+                ) : (
+                  <>
+                    <Upload className="w-3.5 h-3.5" />
+                    <span>Upload & Create Lesson</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Add Other Lesson (Text, PDF, Quiz, Assignment) */}
       {activeSectionForLesson && (
         <div className="fixed inset-0 bg-slate-950/50 backdrop-blur-xs flex items-center justify-center p-4 z-50">
           <div className="bg-white border border-slate-200 rounded-2xl p-6 max-w-lg w-full space-y-4 shadow-xl max-h-[90vh] overflow-y-auto">
@@ -1185,7 +1837,7 @@ export const AdminAddCoursePage: React.FC<AdminAddCoursePageProps> = ({
                   type="text"
                   value={lessonForm.title}
                   onChange={(e) => setLessonForm({ ...lessonForm, title: e.target.value })}
-                  placeholder="e.g. 1.1 Microservices Architecture Walkthrough"
+                  placeholder="e.g. Microservices Architecture Documentation"
                   className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-green-500/20 focus:border-green-600 mt-1 transition"
                 />
               </div>
@@ -1218,15 +1870,15 @@ export const AdminAddCoursePage: React.FC<AdminAddCoursePageProps> = ({
                 </div>
               </div>
 
-              {/* Video upload / URL */}
+              {/* Content URL */}
               <div>
-                <label className="text-xs font-semibold text-slate-700">Content / Video URL *</label>
+                <label className="text-xs font-semibold text-slate-700">Content / Document URL</label>
                 <div className="flex gap-2 mt-1">
                   <input
                     type="text"
                     value={lessonForm.contentUrl}
                     onChange={(e) => setLessonForm({ ...lessonForm, contentUrl: e.target.value })}
-                    placeholder="https://... or upload MP4/WEBM/MOV"
+                    placeholder="https://... or upload PDF"
                     className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-green-500/20 focus:border-green-600 transition"
                   />
                   <label className="px-3.5 py-2.5 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 rounded-xl text-xs font-semibold cursor-pointer shrink-0 flex items-center gap-1.5 transition">
@@ -1234,7 +1886,7 @@ export const AdminAddCoursePage: React.FC<AdminAddCoursePageProps> = ({
                     <span>Upload</span>
                     <input
                       type="file"
-                      accept="video/*,application/pdf"
+                      accept="application/pdf,video/*"
                       onChange={(e) => handleFileUpload(e, 'lessonVideo')}
                       className="hidden"
                     />
@@ -1386,12 +2038,12 @@ export const AdminAddCoursePage: React.FC<AdminAddCoursePageProps> = ({
                 </div>
 
                 <div>
-                  <label className="text-xs font-semibold text-slate-700">Duration (e.g. 15m)</label>
+                  <label className="text-xs font-semibold text-slate-700">Duration (e.g. 15m or 12:34)</label>
                   <input
                     type="text"
                     value={editLessonForm.duration}
                     onChange={(e) => setEditLessonForm({ ...editLessonForm, duration: e.target.value })}
-                    placeholder="15m"
+                    placeholder="12:34"
                     className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-green-500/20 focus:border-green-600 mt-1 transition"
                   />
                 </div>
