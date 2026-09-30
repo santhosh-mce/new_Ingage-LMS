@@ -25,6 +25,7 @@ import {
 } from '../api/authApi';
 import { useAppDispatch } from '../store/hooks';
 import { setCredentials } from '../store/slices/authSlice';
+import { SuccessModal } from './SuccessModal';
 
 // ---------------------------------------------------------------------------
 // Step Type Definitions
@@ -78,6 +79,24 @@ export function AuthModal({
   const [error, setError] = useState<string | null>(null);
   const [successBanner, setSuccessBanner] = useState<string | null>(null);
   const [showTermsModal, setShowTermsModal] = useState(false);
+  const [successInfo, setSuccessInfo] = useState<{
+    isOpen: boolean;
+    title: string;
+    subtitle: string;
+    successTitle: string;
+    message: string;
+    user: UserProfile;
+  } | null>(null);
+  const successTimerRef = React.useRef<NodeJS.Timeout | null>(null);
+
+  useEffect(() => {
+    if (!isOpen) {
+      if (successTimerRef.current) {
+        clearTimeout(successTimerRef.current);
+      }
+      setSuccessInfo(null);
+    }
+  }, [isOpen]);
 
   const dispatch = useAppDispatch();
 
@@ -185,8 +204,20 @@ export function AuthModal({
         localStorage.setItem('ingage_user', JSON.stringify(user));
         dispatch(setCredentials({ token: res.token, user }));
 
-        onSuccess(user);
-        onClose();
+        setSuccessInfo({
+          isOpen: true,
+          title: 'Create Your Account',
+          subtitle: 'Start your learning journey today',
+          successTitle: 'Account Created!',
+          message: 'Welcome to Ingage LMS. Setting up your dashboard...',
+          user,
+        });
+
+        successTimerRef.current = setTimeout(() => {
+          setSuccessInfo(null);
+          onSuccess(user);
+          onClose();
+        }, 1800);
       } else {
         setSignupStep('SIGNUP_SUCCESS');
       }
@@ -238,8 +269,20 @@ export function AuthModal({
         localStorage.setItem('ingage_user', JSON.stringify(user));
         dispatch(setCredentials({ token: response.token, user }));
 
-        onSuccess(user);
-        onClose();
+        setSuccessInfo({
+          isOpen: true,
+          title: 'Welcome Back!',
+          subtitle: 'Great to see you again',
+          successTitle: 'Login Successful!',
+          message: 'Welcome back to Ingage LMS. Setting up your dashboard...',
+          user,
+        });
+
+        successTimerRef.current = setTimeout(() => {
+          setSuccessInfo(null);
+          onSuccess(user);
+          onClose();
+        }, 1800);
       }
     } catch (err: unknown) {
       setError(getAuthErrorMessage(err, 'Invalid email or password. Please try again.'));
@@ -356,6 +399,27 @@ export function AuthModal({
   };
 
   const { title, subtitle } = getHeaderInfo();
+
+  if (successInfo?.isOpen) {
+    return (
+      <SuccessModal
+        isOpen={true}
+        title={successInfo.title}
+        subtitle={successInfo.subtitle}
+        successTitle={successInfo.successTitle}
+        message={successInfo.message}
+        onClose={() => {
+          if (successTimerRef.current) {
+            clearTimeout(successTimerRef.current);
+          }
+          const u = successInfo.user;
+          setSuccessInfo(null);
+          onSuccess(u);
+          onClose();
+        }}
+      />
+    );
+  }
 
   return (
     <>

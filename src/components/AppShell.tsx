@@ -90,12 +90,25 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <AuthModal
         isOpen={isAuthModalOpen}
         initialMode={authModalMode}
-        onClose={closeAuthModal}
-        onSuccess={() => {
+        onClose={() => {
           closeAuthModal();
-          showToast("Authentication successful!");
-          if (authRedirectUrl) {
-            navigate(authRedirectUrl);
+          if (pathname === '/login' || pathname === '/signup' || pathname === '/forgot-password' || pathname === '/reset-password') {
+            navigate('/');
+          }
+        }}
+        onSuccess={(user) => {
+          closeAuthModal();
+          showToast(`Welcome${user?.name ? ', ' + user.name : ''}!`);
+          const savedRedirect = authRedirectUrl || sessionStorage.getItem('ingage_redirect_after_auth');
+          if (savedRedirect && savedRedirect !== '/login' && savedRedirect !== '/signup' && savedRedirect !== '/forgot-password' && savedRedirect !== '/reset-password') {
+            try {
+              sessionStorage.removeItem('ingage_redirect_after_auth');
+            } catch {}
+            navigate(savedRedirect);
+          } else if (user?.role === 'ADMIN') {
+            navigate('/admin');
+          } else if (pathname === '/login' || pathname === '/signup' || pathname === '/forgot-password' || pathname === '/reset-password') {
+            navigate('/');
           }
         }}
         onNavigate={navigate}
