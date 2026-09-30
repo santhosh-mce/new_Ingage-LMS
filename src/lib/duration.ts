@@ -82,3 +82,9 @@ export const parseDurationToSeconds = (dur: any, durationSeconds?: any): number 
   if (secMatch) total += parseInt(secMatch[1], 10);
   return total;
 };
+
+export const extractYouTubeId = (url: string): string | null => {
+  if (!url) return null;
+  const match = url.match(/(?:youtu\.be\/|youtube\.com\/(?:embed\/|v\/|watch\?v=|watch\?.+&v=))([\w-]{11})/);
+  return match ? match[1] : null;
+};

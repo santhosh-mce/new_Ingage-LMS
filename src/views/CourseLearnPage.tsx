@@ -1,8 +1,10 @@
 "use client";
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   ChevronLeft,
   ChevronRight,
+  ChevronDown,
+  ChevronUp,
   Play,
   Pause,
   Volume2,
@@ -14,6 +16,8 @@ import {
   RotateCw,
   RefreshCw,
   CheckCircle2,
+  Circle,
+  PlayCircle,
   Clock,
   BookOpen,
   User,
@@ -28,8 +32,21 @@ import {
   HelpCircle,
   Award,
   ArrowRight,
+  ArrowLeft,
   Download,
-  XCircle
+  XCircle,
+  Video,
+  Radio,
+  FileBarChart,
+  CreditCard,
+  FolderArchive,
+  ExternalLink,
+  Menu,
+  X,
+  Paperclip,
+  LogOut,
+  GraduationCap,
+  Upload
 } from 'lucide-react';
 import { getCourseById, CourseDto } from '../api/courseApi';
 import { getCourseContent, CourseContentDetail } from '../api/paymentApi';
@@ -54,6 +71,14 @@ import {
   setActiveLessonId as setReduxActiveLessonId,
   updateLessonPlayback,
 } from '../store/slices/courseSlice';
+import { logoutUserThunk, clearCredentials } from '../store/slices/authSlice';
+import {
+  formatDurationHuman,
+  formatDurationMMSS,
+  formatDurationDigital,
+  parseDurationToSeconds,
+  extractYouTubeId,
+} from '@/lib/duration';
 
 interface CourseLearnPageProps {
   courseId: number | string;
@@ -66,6 +91,7 @@ interface FlattenedLesson {
   title: string;
   description?: string;
   duration?: string;
+  durationSeconds?: number;
   lessonType: string;
   sectionId: number;
   sectionTitle: string;
@@ -74,6 +100,7 @@ interface FlattenedLesson {
   freePreview?: boolean;
   contentUrl?: string | null;
   videoUrl?: string | null;
+  videoKey?: string | null;
 }
 
 type WatermarkPosition = 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right' | 'center';
@@ -91,7 +118,21 @@ export function CourseLearnPage({ courseId, onNavigate, onShowToast }: CourseLea
   const [enrollmentStatus, setEnrollmentStatus] = useState<CourseEnrollmentStatusDto | null>(null);
   const [activeLessonId, setActiveLessonId] = useState<number | null>(null);
   const [completedLessonIds, setCompletedLessonIds] = useState<number[]>([]);
-  const [activeTab, setActiveTab] = useState<'overview' | 'notes'>('overview');
+
+  // Navigation Tabs: Videos (default), Quizzes, Projects, Live Class, Reports, Payment
+  const [activeTab, setActiveTab] = useState<'videos' | 'quizzes' | 'projects' | 'live' | 'reports' | 'payment'>('videos');
+
+  // User Profile Dropdown state
+  const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
+
+  // Mobile drawer toggle for curriculum
+  const [isMobileCurriculumOpen, setIsMobileCurriculumOpen] = useState(false);
+
+  // Expanded sections accordion state
+  const [expandedSections, setExpandedSections] = useState<Record<number, boolean>>({});
+
+  // Resume prompt state
+  const [resumePromptTime, setResumePromptTime] = useState<number | null>(null);
 
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
@@ -100,7 +141,7 @@ export function CourseLearnPage({ courseId, onNavigate, onShowToast }: CourseLea
   const [isVideoBuffering, setIsVideoBuffering] = useState<boolean>(false);
   const [isSubmittingCompletion, setIsSubmittingCompletion] = useState<boolean>(false);
 
-  // Auto-next countdown state (10-second wait after legitimate completion)
+  // Auto-next countdown state
   const [autoNextCountdown, setAutoNextCountdown] = useState<number | null>(null);
   const countdownTimerRef = useRef<NodeJS.Timeout | null>(null);
   const lessonContentRef = useRef<HTMLDivElement | null>(null);
@@ -114,16 +155,14 @@ export function CourseLearnPage({ courseId, onNavigate, onShowToast }: CourseLea
   const [quizLoading, setQuizLoading] = useState<boolean>(false);
   const [quizError, setQuizError] = useState<string | null>(null);
 
-  // Certificate state on course completion - course-specific CertificateDto
+  // Assignment submission state
+  const [assignmentSubmitted, setAssignmentSubmitted] = useState<boolean>(false);
+  const [assignmentFile, setAssignmentFile] = useState<File | null>(null);
+
+  // Certificate state
   const [courseCertificate, setCourseCertificate] = useState<any | null>(null);
   const [isDownloadingCert, setIsDownloadingCert] = useState<boolean>(false);
   const [isCertModalOpen, setIsCertModalOpen] = useState<boolean>(false);
-  const { user } = useAppSelector((state) => state.auth);
-
-  // Clear certificate state when switching courses to prevent stale cross-course certificate display
-  useEffect(() => {
-    setCourseCertificate(null);
-  }, [courseId]);
 
   // Video container & element refs
   const videoContainerRef = useRef<HTMLDivElement | null>(null);
@@ -132,6 +171,7 @@ export function CourseLearnPage({ courseId, onNavigate, onShowToast }: CourseLea
   const [currentTime, setCurrentTime] = useState<number>(0);
   const [duration, setDuration] = useState<number>(0);
   const [watchedTime, setWatchedTime] = useState<number>(0);
+
   const [volume, setVolume] = useState<number>(() => {
     try {
       const saved = localStorage.getItem('ingage_video_volume');
@@ -147,7 +187,15 @@ export function CourseLearnPage({ courseId, onNavigate, onShowToast }: CourseLea
       return false;
     }
   });
-  const [playbackSpeed, setPlaybackSpeed] = useState<number>(1);
+
+  const [playbackSpeed, setPlaybackSpeed] = useState<number>(() => {
+    try {
+      const saved = localStorage.getItem('ingage_video_speed');
+      return saved ? Number(saved) : 1;
+    } catch {
+      return 1;
+    }
+  });
   const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
 
   // Anti-cheat watch progress tracking refs
@@ -158,11 +206,11 @@ export function CourseLearnPage({ courseId, onNavigate, onShowToast }: CourseLea
   // Dynamic security watermark state
   const [watermarkPos, setWatermarkPos] = useState<WatermarkPosition>('top-right');
 
-  // Backend API base URL for protected video streaming endpoint
+  // Backend API base URL
   const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || '/api' || 'http://localhost:8080/api';
   const authToken = typeof window !== 'undefined' ? (localStorage.getItem('ingage_token') || '') : '';
 
-  // Download deterrence: Prevent Save / View Source keyboard shortcuts
+  // Download deterrence
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && (e.key === 's' || e.key === 'S' || e.key === 'u' || e.key === 'U')) {
@@ -173,7 +221,7 @@ export function CourseLearnPage({ courseId, onNavigate, onShowToast }: CourseLea
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
-  // Track fullscreen state across all standard & vendor-prefixed browser APIs
+  // Track fullscreen state
   useEffect(() => {
     const handleFullscreenChange = () => {
       const doc = document as any;
@@ -199,72 +247,73 @@ export function CourseLearnPage({ courseId, onNavigate, onShowToast }: CourseLea
     };
   }, []);
 
-  // Subtle watermark position shifting every 15 seconds to deter screen recordings
+  // Dynamic watermark repositioning
   useEffect(() => {
-    const positions: WatermarkPosition[] = ['top-right', 'bottom-left', 'top-left', 'bottom-right', 'center'];
-    let idx = 0;
+    const positions: WatermarkPosition[] = ['top-left', 'top-right', 'bottom-left', 'bottom-right', 'center'];
     const interval = setInterval(() => {
-      idx = (idx + 1) % positions.length;
-      setWatermarkPos(positions[idx]);
-    }, 15000);
+      setWatermarkPos((prev) => {
+        const available = positions.filter((p) => p !== prev);
+        return available[Math.floor(Math.random() * available.length)];
+      });
+    }, 25000);
     return () => clearInterval(interval);
   }, []);
 
+  // Load course data
   const loadCourseData = async () => {
     setLoading(true);
     setError(null);
     try {
-      const [courseRes, contentRes] = await Promise.all([
-        getCourseById(courseId),
+      const [courseRes, contentRes, enrollRes] = await Promise.all([
+        getCourseById(courseId).catch(() => null),
         getCourseContent(courseId),
+        getCourseEnrollmentStatus(courseId).catch(() => null),
       ]);
 
       setCourse(courseRes);
       setContent(contentRes);
+      setEnrollmentStatus(enrollRes);
 
-      const resolvedId = courseRes?.id || (contentRes as any)?.id || courseId;
-
-      // Fetch enrollment status if logged in
-      try {
-        const enrollRes = await getCourseEnrollmentStatus(resolvedId);
-        setEnrollmentStatus(enrollRes);
-      } catch {
-        // Continue if unauthenticated or error
+      // Initialize all sections as expanded by default
+      if (contentRes?.sections) {
+        const initialExpanded: Record<number, boolean> = {};
+        contentRes.sections.forEach((sec) => {
+          initialExpanded[sec.id] = true;
+        });
+        setExpandedSections(initialExpanded);
       }
 
-      // Server completed lessons & progress
-      const serverCompleted: number[] = contentRes.completedLessonIds || [];
-      let localCompleted: number[] = [];
-      try {
-        const stored = localStorage.getItem(`ingage_completed_lessons_${courseId}`);
-        if (stored) {
-          localCompleted = JSON.parse(stored);
-        }
-      } catch {
-        // noop
-      }
-
-      const combinedCompleted = Array.from(new Set([...serverCompleted, ...localCompleted]));
-      setCompletedLessonIds(combinedCompleted);
-      dispatch(setReduxCompletedLessonIds(combinedCompleted));
-
-      if (contentRes.progressPercentage !== undefined) {
-        dispatch(setCourseProgress(contentRes.progressPercentage));
-      }
-
-      // Initialize active lesson (prefer first incomplete lesson, or first lesson)
-      const allFetchedLessonIds: number[] = [];
+      // Sync completed lessons
+      const serverCompleted: number[] = [];
       contentRes.sections?.forEach((sec) => {
-        sec.lessons?.forEach((l) => allFetchedLessonIds.push(l.id));
+        sec.lessons?.forEach((les) => {
+          if ((les as any).completed || (les as any).isCompleted) {
+            serverCompleted.push(les.id);
+          }
+        });
       });
 
-      const firstUncompletedId = allFetchedLessonIds.find((id) => !combinedCompleted.includes(id));
-      const initialLessonId = firstUncompletedId ?? allFetchedLessonIds[0] ?? null;
+      const merged = Array.from(new Set([...serverCompleted, ...reduxCompletedIds]));
+      setCompletedLessonIds(merged);
+      dispatch(setReduxCompletedLessonIds(merged));
 
-      setActiveLessonId(initialLessonId);
-      dispatch(setReduxActiveLessonId(initialLessonId));
+      // Select initial active lesson
+      const all: any[] = [];
+      contentRes.sections?.forEach((sec) => {
+        sec.lessons?.forEach((les) => {
+          all.push(les);
+        });
+      });
+
+      if (all.length > 0) {
+        const firstUncompleted = all.find((l) => !merged.includes(l.id));
+        const initial = firstUncompleted || all[0];
+        setActiveLessonId(initial.id);
+        dispatch(setReduxActiveLessonId(initial.id));
+      }
     } catch (err: any) {
-      setError(err?.response?.data?.message || err?.message || 'Unable to load this course lesson.');
+      console.error('Error loading course data:', err);
+      setError(err?.response?.data?.message || err?.message || 'Failed to load course details.');
     } finally {
       setLoading(false);
     }
@@ -274,33 +323,40 @@ export function CourseLearnPage({ courseId, onNavigate, onShowToast }: CourseLea
     loadCourseData();
   }, [courseId]);
 
-  // Flatten curriculum lessons for easy previous/next navigation
-  const allLessons: FlattenedLesson[] = React.useMemo(() => {
-    if (!content || !content.sections) return [];
-    const list: FlattenedLesson[] = [];
-    content.sections.forEach((sec) => {
-      sec.lessons.forEach((les) => {
-        list.push({
-          id: les.id,
-          title: les.title,
-          description: les.description,
-          duration: les.duration,
-          lessonType: les.lessonType,
-          sectionId: sec.id,
-          sectionTitle: sec.title,
-          isCompleted: completedLessonIds.includes(les.id),
-          locked: les.locked,
-          freePreview: les.freePreview,
-          contentUrl: (les as any).contentUrl || (les as any).videoUrl || (les as any).content_url || null,
-          videoUrl: (les as any).videoUrl || (les as any).contentUrl || (les as any).content_url || null,
-        });
-      });
-    });
-    return list;
+  // Flattened lessons list
+  const allLessons: FlattenedLesson[] = useMemo(() => {
+    if (!content?.sections) return [];
+    return content.sections.flatMap((section) =>
+      section.lessons.map((lesson) => ({
+        id: lesson.id,
+        title: lesson.title,
+        description: lesson.description,
+        duration: lesson.duration,
+        durationSeconds: (lesson as any).durationSeconds || (lesson as any).duration_seconds,
+        lessonType: lesson.lessonType || 'VIDEO',
+        sectionId: section.id,
+        sectionTitle: section.title,
+        isCompleted: completedLessonIds.includes(lesson.id),
+        locked: Boolean(lesson.locked),
+        freePreview: Boolean(lesson.freePreview),
+        contentUrl: (lesson as any).contentUrl || (lesson as any).videoUrl || (lesson as any).content_url || null,
+        videoUrl: (lesson as any).videoUrl || (lesson as any).contentUrl || (lesson as any).content_url || null,
+        videoKey: (lesson as any).videoKey || (lesson as any).youtubeVideoId || null,
+      }))
+    );
   }, [content, completedLessonIds]);
 
   const currentIndex = allLessons.findIndex((l) => l.id === activeLessonId);
   const activeLesson = allLessons[currentIndex] || allLessons[0] || null;
+
+  // Active section index & title for dynamic breadcrumb
+  const activeSectionIdx = useMemo(() => {
+    if (!content?.sections || !activeLesson) return 0;
+    const idx = content.sections.findIndex((s) => s.id === activeLesson.sectionId);
+    return idx >= 0 ? idx : 0;
+  }, [content?.sections, activeLesson]);
+
+  const activeSection = content?.sections?.[activeSectionIdx] || null;
 
   const isUserEnrolled = Boolean(content?.isEnrolled || enrollmentStatus?.enrolled || enrollmentStatus?.courseAccess);
   const canPlayActiveLesson = Boolean(activeLesson && (isUserEnrolled || activeLesson.freePreview));
@@ -311,85 +367,26 @@ export function CourseLearnPage({ courseId, onNavigate, onShowToast }: CourseLea
     (allLessons.length > 0 && allLessons.every((l) => completedLessonIds.includes(l.id)))
   );
 
-  // Load course certificate strictly for this courseId if completed
-  useEffect(() => {
-    let isCurrent = true;
-    if (isCourseFullyCompleted && courseId) {
-      getCourseCertificate(courseId)
-        .then((data) => {
-          if (isCurrent && data?.id && Number(data.courseId) === Number(courseId)) {
-            setCourseCertificate(data);
-          }
-        })
-        .catch(() => {
-          // If not generated, attempt claim/generation for THIS courseId
-          generateCourseCertificate(courseId)
-            .then((data) => {
-              if (isCurrent && data?.id && Number(data.courseId) === Number(courseId)) {
-                setCourseCertificate(data);
-              }
-            })
-            .catch(() => {});
-        });
-    } else {
-      setCourseCertificate(null);
-    }
-    return () => {
-      isCurrent = false;
-    };
-  }, [courseId, isCourseFullyCompleted]);
-
-  const handleDownloadCourseCertificate = async () => {
-    setIsDownloadingCert(true);
-    const currentCourseTitle = content?.title || course?.title || 'Course';
-    if (onShowToast) onShowToast(`Downloading official certificate for ${currentCourseTitle}...`, 'info');
-    try {
-      let activeCert = courseCertificate;
-
-      // Verify activeCert belongs to the current course
-      if (!activeCert?.id || Number(activeCert.courseId) !== Number(courseId)) {
-        try {
-          activeCert = await getCourseCertificate(courseId);
-        } catch {
-          activeCert = await generateCourseCertificate(courseId);
-        }
-        if (activeCert && Number(activeCert.courseId) === Number(courseId)) {
-          setCourseCertificate(activeCert);
-        }
-      }
-
-      if (activeCert?.id && Number(activeCert.courseId) === Number(courseId)) {
-        await downloadCertificatePdf(
-          activeCert.id,
-          activeCert.certificateNumber,
-          activeCert.courseTitle || currentCourseTitle
-        );
-        if (onShowToast) onShowToast('Official Certificate PDF downloaded successfully!', 'success');
-      } else {
-        throw new Error('No certificate is available for this course yet.');
-      }
-    } catch (err: any) {
-      console.error('Certificate Download Error:', err);
-      const errMsg = err?.response?.data?.message || err?.message || 'Failed to download certificate PDF from server. Please try again.';
-      if (onShowToast) onShowToast(errMsg, 'error');
-    } finally {
-      setIsDownloadingCert(false);
-    }
-  };
-
-  // Compute authenticated video streaming URL
-  // Direct video URL playback, local uploads folder video, or backend streaming endpoint
+  // Check if active lesson is YouTube
   const rawVideo = activeLesson && (activeLesson.contentUrl || activeLesson.videoUrl || (activeLesson as any).content_url);
-  const fallbackStream = activeLesson
-    ? `${API_BASE_URL}/courses/${course?.id || courseId}/lessons/${activeLesson.id}/video${authToken ? `?token=${encodeURIComponent(authToken)}` : ''}`
-    : '';
+  const youtubeVideoId = useMemo(() => {
+    if (!activeLesson) return null;
+    if (activeLesson.videoKey) return activeLesson.videoKey;
+    if (rawVideo && /youtube.com|youtu.be/i.test(String(rawVideo))) {
+      return extractYouTubeId(String(rawVideo));
+    }
+    return null;
+  }, [activeLesson, rawVideo]);
 
+  const isYouTubeVideo = Boolean(youtubeVideoId);
+
+  // Resolve direct / uploaded video stream URL
   const resolveStreamUrl = (): string => {
     if (!activeLesson || !canPlayActiveLesson) return '';
+    if (isYouTubeVideo) return '';
 
     let videoUrl = rawVideo ? String(rawVideo).trim() : '';
 
-    // If empty or points to old Google sample / localhost backend, use uploads/videos/video.mp4
     if (
       !videoUrl ||
       videoUrl.includes('commondatastorage.googleapis.com') ||
@@ -414,7 +411,7 @@ export function CourseLearnPage({ courseId, onNavigate, onShowToast }: CourseLea
 
   const videoStreamUrl = resolveStreamUrl();
 
-  // Reset video error & loading states, cancel auto-next countdown, and smooth scroll on active lesson change
+  // Reset video state & check for saved resume position on active lesson change
   useEffect(() => {
     if (countdownTimerRef.current) {
       clearInterval(countdownTimerRef.current);
@@ -425,37 +422,37 @@ export function CourseLearnPage({ courseId, onNavigate, onShowToast }: CourseLea
     setIsPlaying(false);
     setIsVideoLoading(true);
     setIsVideoBuffering(false);
-
-    // Reset quiz states for active lesson
     setSelectedOption(null);
     setQuizResult(null);
     setQuizError(null);
     setCurrentQuestionIndex(0);
+    setAssignmentSubmitted(false);
 
-    // Smooth scroll to the lesson content area
-    if (lessonContentRef.current) {
-      lessonContentRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }
-  }, [activeLesson?.id]);
-
-  // Clean up auto-next countdown on component unmount
-  useEffect(() => {
-    return () => {
-      if (countdownTimerRef.current) {
-        clearInterval(countdownTimerRef.current);
-        countdownTimerRef.current = null;
+    // Check if there is a saved playback position > 15 seconds to offer Resume
+    if (activeLesson) {
+      try {
+        const posKey = `ingage_video_pos_${courseId}_${activeLesson.id}`;
+        const savedPos = localStorage.getItem(posKey);
+        const posNum = savedPos ? Number(savedPos) : 0;
+        if (posNum > 15 && !completedLessonIds.includes(activeLesson.id)) {
+          setResumePromptTime(posNum);
+        } else {
+          setResumePromptTime(null);
+        }
+      } catch {
+        setResumePromptTime(null);
       }
-    };
-  }, []);
+    }
+  }, [activeLesson?.id, courseId]);
 
-  // Fetch quiz questions whenever active lesson is a QUIZ
+  // Fetch quiz questions if active lesson is QUIZ
   useEffect(() => {
+    let isMounted = true;
     if (!activeLesson || activeLesson.lessonType !== 'QUIZ') {
       setQuizQuestions([]);
       return;
     }
 
-    let isMounted = true;
     const fetchQuiz = async () => {
       setQuizLoading(true);
       setQuizError(null);
@@ -476,7 +473,6 @@ export function CourseLearnPage({ courseId, onNavigate, onShowToast }: CourseLea
     };
 
     fetchQuiz();
-
     return () => {
       isMounted = false;
     };
@@ -484,43 +480,31 @@ export function CourseLearnPage({ courseId, onNavigate, onShowToast }: CourseLea
 
   const isCurrentCompleted = Boolean(activeLesson && completedLessonIds.includes(activeLesson.id));
 
-  // Restore saved video position and genuine watched progress for the active lesson
-  useEffect(() => {
-    if (!activeLesson || !videoRef.current) return;
-
-    try {
-      const posKey = `ingage_video_pos_${courseId}_${activeLesson.id}`;
-      const watchedKey = `ingage_watched_sec_${courseId}_${activeLesson.id}`;
-
-      const savedPos = localStorage.getItem(posKey);
-      const posNum = savedPos && Number(savedPos) > 0 ? Number(savedPos) : 0;
-
-      const savedWatched = localStorage.getItem(watchedKey);
-      let watchedNum = savedWatched && Number(savedWatched) > 0 ? Number(savedWatched) : 0;
-
-      // Check server watch duration if available
-      const serverWatch = activeLesson
-        ? (content?.sections?.flatMap((s) => s.lessons).find((l) => l.id === activeLesson.id) as any)?.watchDurationSeconds
-        : 0;
-      if (serverWatch && serverWatch > watchedNum) {
-        watchedNum = serverWatch;
-      }
-
-      if (isCurrentCompleted) {
-        watchedNum = videoRef.current.duration || duration || 1000;
-      }
-
-      videoRef.current.currentTime = posNum;
-      setCurrentTime(posNum);
-      setWatchedTime(watchedNum);
-      accumulatedWatchTimeRef.current = watchedNum;
-      lastPlaybackTimeRef.current = posNum;
-    } catch {
-      // noop
+  // Resume handler
+  const handleResumePlayback = () => {
+    if (videoRef.current && resumePromptTime) {
+      videoRef.current.currentTime = resumePromptTime;
+      setCurrentTime(resumePromptTime);
+      videoRef.current.play().then(() => setIsPlaying(true)).catch(() => {});
     }
-  }, [activeLesson?.id, courseId, isCurrentCompleted, content]);
+    setResumePromptTime(null);
+  };
 
-  // Save video position periodically as user watches & track genuine watched progress
+  const handleStartFromBeginning = () => {
+    if (videoRef.current) {
+      videoRef.current.currentTime = 0;
+      setCurrentTime(0);
+      videoRef.current.play().then(() => setIsPlaying(true)).catch(() => {});
+    }
+    try {
+      if (activeLesson) {
+        localStorage.removeItem(`ingage_video_pos_${courseId}_${activeLesson.id}`);
+      }
+    } catch {}
+    setResumePromptTime(null);
+  };
+
+  // Video time update & progress calculation
   const handleTimeUpdate = () => {
     if (!videoRef.current || !activeLesson) return;
     const cur = videoRef.current.currentTime;
@@ -532,467 +516,96 @@ export function CourseLearnPage({ courseId, onNavigate, onShowToast }: CourseLea
     try {
       const posKey = `ingage_video_pos_${courseId}_${activeLesson.id}`;
       localStorage.setItem(posKey, String(cur));
-    } catch {
-      // noop
-    }
+    } catch {}
 
-    // Genuine watched progress tracking:
-    // Only increment when moving forward at realistic playback speed (without seeking/jumping)
+    // Genuine watched progress
     const lastTime = lastPlaybackTimeRef.current;
     const delta = cur - lastTime;
     if (delta > 0 && delta <= 1.5 * playbackSpeed) {
       accumulatedWatchTimeRef.current += delta;
-      const newWatched = dur > 0
-        ? Math.min(dur, accumulatedWatchTimeRef.current)
-        : accumulatedWatchTimeRef.current;
+      const newWatched = dur > 0 ? Math.min(dur, accumulatedWatchTimeRef.current) : accumulatedWatchTimeRef.current;
       setWatchedTime(newWatched);
 
       try {
         const watchedKey = `ingage_watched_sec_${courseId}_${activeLesson.id}`;
         localStorage.setItem(watchedKey, String(newWatched));
-      } catch {
-        // noop
-      }
+      } catch {}
     }
     lastPlaybackTimeRef.current = cur;
 
-    // Dispatch Redux playback state
-    dispatch(
-      updateLessonPlayback({
-        lessonId: activeLesson.id,
-        currentTime: cur,
-        duration: dur,
-        watchDuration: accumulatedWatchTimeRef.current,
-      })
-    );
-
-    // Automatic end-of-video detection:
-    // If video reached >= duration - 2.5s with verified watch coverage >= 85%, complete it!
-    if (
-      !isCurrentCompleted &&
-      activeLesson.lessonType === 'VIDEO' &&
-      dur > 5 &&
-      cur >= dur - 2.5 &&
-      accumulatedWatchTimeRef.current >= dur * 0.85 &&
-      !isSubmittingCompletion
-    ) {
-      handleMarkComplete({
-        currentTime: cur,
-        duration: dur,
-        watchDurationSeconds: Math.round(accumulatedWatchTimeRef.current),
-      });
-    }
-  };
-
-  // Periodic background progress sync to backend every 8 seconds while playing
-  useEffect(() => {
-    if (!isPlaying || !activeLesson || isCurrentCompleted) return;
-
-    const interval = setInterval(() => {
-      if (videoRef.current && activeLesson) {
-        const cur = videoRef.current.currentTime;
-        const dur = videoRef.current.duration || 0;
-        const watchSec = Math.round(accumulatedWatchTimeRef.current);
-        if (cur > 0 && dur > 0) {
-          dispatch(
-            saveLessonProgressThunk({
-              lessonId: activeLesson.id,
-              currentTime: cur,
-              duration: dur,
-              watchDurationSeconds: watchSec,
-            })
-          );
-        }
-      }
-    }, 8000);
-
-    return () => clearInterval(interval);
-  }, [isPlaying, activeLesson?.id, isCurrentCompleted, dispatch]);
-
-  const togglePlay = () => {
-    if (!videoRef.current) return;
-    if (isPlaying) {
-      videoRef.current.pause();
-      setIsPlaying(false);
-    } else {
-      videoRef.current.play().then(() => setIsPlaying(true)).catch(() => {});
-    }
-  };
-
-  const handleSeek = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const time = Number(e.target.value);
-    if (!videoRef.current) return;
-
-    videoRef.current.currentTime = time;
-    setCurrentTime(time);
-    lastPlaybackTimeRef.current = time;
-    // Seeking does NOT mark content as watched!
-  };
-
-  const handleSkipBackward = () => {
-    if (!videoRef.current) return;
-    const newTime = Math.max(0, videoRef.current.currentTime - 10);
-    videoRef.current.currentTime = newTime;
-    setCurrentTime(newTime);
-    lastPlaybackTimeRef.current = newTime;
-    // Exactly 10s backward, does not change watched progress
-  };
-
-  const handleSkipForward = () => {
-    if (!videoRef.current) return;
-    const dur = videoRef.current.duration || duration || 0;
-    const target = Math.min(dur, videoRef.current.currentTime + 10);
-    videoRef.current.currentTime = target;
-    setCurrentTime(target);
-    lastPlaybackTimeRef.current = target;
-    // Exactly 10s forward, does not mark skipped content as watched
-  };
-
-  const toggleMute = () => {
-    if (!videoRef.current) return;
-    const newMuted = !isMuted;
-    videoRef.current.muted = newMuted;
-    setIsMuted(newMuted);
-    try {
-      localStorage.setItem('ingage_video_muted', String(newMuted));
-    } catch {
-      // noop
-    }
-  };
-
-  const handleVolumeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const val = Number(e.target.value);
-    setVolume(val);
-    const muted = val === 0;
-    setIsMuted(muted);
-    try {
-      localStorage.setItem('ingage_video_volume', String(val));
-      localStorage.setItem('ingage_video_muted', String(muted));
-    } catch {
-      // noop
-    }
-    if (videoRef.current) {
-      videoRef.current.volume = val;
-      videoRef.current.muted = muted;
-    }
-  };
-
-  const handleSpeedChange = (speed: number) => {
-    setPlaybackSpeed(speed);
-    if (videoRef.current) {
-      videoRef.current.playbackRate = speed;
-    }
-  };
-
-  const handleFullscreen = () => {
-    if (!videoContainerRef.current) return;
-    const doc = document as any;
-    const el = videoContainerRef.current as any;
-    const isFull = !!(
-      doc.fullscreenElement ||
-      doc.webkitFullscreenElement ||
-      doc.mozFullScreenElement ||
-      doc.msFullscreenElement
-    );
-
-    try {
-      if (isFull) {
-        if (doc.exitFullscreen) {
-          doc.exitFullscreen().catch(() => {});
-        } else if (doc.webkitExitFullscreen) {
-          doc.webkitExitFullscreen();
-        } else if (doc.mozCancelFullScreen) {
-          doc.mozCancelFullScreen();
-        } else if (doc.msExitFullscreen) {
-          doc.msExitFullscreen();
-        }
-      } else {
-        if (el.requestFullscreen) {
-          el.requestFullscreen().catch(() => {});
-        } else if (el.webkitRequestFullscreen) {
-          el.webkitRequestFullscreen();
-        } else if (el.mozRequestFullScreen) {
-          el.mozRequestFullScreen();
-        } else if (el.msRequestFullscreen) {
-          el.msRequestFullscreen();
-        }
-      }
-    } catch {
-      // Graceful fallback
-    }
-  };
-
-  // Keyboard Shortcuts (Space, ArrowLeft, ArrowRight, ArrowUp, ArrowDown, M, F)
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      const target = e.target as HTMLElement | null;
-      if (
-        target &&
-        (target.tagName === 'INPUT' ||
-          target.tagName === 'TEXTAREA' ||
-          target.tagName === 'SELECT' ||
-          target.isContentEditable)
-      ) {
-        return;
-      }
-
-      if (!videoRef.current) return;
-
-      if (e.code === 'Space') {
-        e.preventDefault();
-        togglePlay();
-      } else if (e.code === 'ArrowLeft') {
-        e.preventDefault();
-        handleSkipBackward();
-      } else if (e.code === 'ArrowRight') {
-        e.preventDefault();
-        handleSkipForward();
-      } else if (e.code === 'ArrowUp') {
-        e.preventDefault();
-        setVolume((prev) => {
-          const next = Math.min(1, Math.round((prev + 0.1) * 10) / 10);
-          try {
-            localStorage.setItem('ingage_video_volume', String(next));
-            localStorage.setItem('ingage_video_muted', 'false');
-          } catch {
-            // noop
-          }
-          if (videoRef.current) {
-            videoRef.current.volume = next;
-            videoRef.current.muted = false;
-          }
-          setIsMuted(false);
-          return next;
+    // Automatic completion at 90% threshold
+    if (!isCurrentCompleted && dur > 0) {
+      const completionPercent = (cur / dur) * 100;
+      if (completionPercent >= 90) {
+        handleMarkComplete(false, {
+          watchDuration: accumulatedWatchTimeRef.current,
+          duration: dur,
         });
-      } else if (e.code === 'ArrowDown') {
-        e.preventDefault();
-        setVolume((prev) => {
-          const next = Math.max(0, Math.round((prev - 0.1) * 10) / 10);
-          const muted = next === 0;
-          try {
-            localStorage.setItem('ingage_video_volume', String(next));
-            localStorage.setItem('ingage_video_muted', String(muted));
-          } catch {
-            // noop
-          }
-          if (videoRef.current) {
-            videoRef.current.volume = next;
-            videoRef.current.muted = muted;
-          }
-          setIsMuted(muted);
-          return next;
-        });
-      } else if (e.key === 'm' || e.key === 'M') {
-        e.preventDefault();
-        toggleMute();
-      } else if (e.key === 'f' || e.key === 'F') {
-        e.preventDefault();
-        handleFullscreen();
       }
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isPlaying, duration, isCurrentCompleted, activeLesson, isMuted, volume]);
-
-  const handleVideoLoadedData = () => {
-    setIsVideoLoading(false);
-    setIsVideoBuffering(false);
-    if (videoRef.current) {
-      videoRef.current.volume = volume;
-      videoRef.current.muted = isMuted;
-      videoRef.current.playbackRate = playbackSpeed;
     }
   };
 
-  const handleVideoError = () => {
-    setIsPlaying(false);
-    // If an external URL failed, fallback immediately to guaranteed local uploads video
-    if (videoRef.current && !videoRef.current.src.includes('/uploads/videos/video.mp4')) {
-      videoRef.current.src = '/uploads/videos/video.mp4';
-      videoRef.current.load();
-      videoRef.current
-        .play()
-        .then(() => {
-          setIsPlaying(true);
-          setVideoError(null);
-        })
-        .catch(() => {});
-      return;
-    }
-    setIsVideoLoading(false);
-    setIsVideoBuffering(false);
-    setVideoError('Unable to load video. Please check your connection or try again.');
-  };
-
-  const handleRetryVideo = () => {
-    setVideoError(null);
-    setIsVideoLoading(true);
-    setIsVideoBuffering(false);
-    if (videoRef.current) {
-      videoRef.current.src = '/uploads/videos/video.mp4';
-      videoRef.current.load();
-      videoRef.current
-        .play()
-        .then(() => {
-          setIsPlaying(true);
-          setIsVideoLoading(false);
-        })
-        .catch(() => {
-          setIsVideoLoading(false);
-        });
-    }
-  };
-
-  const handleVideoEnded = () => {
-    setIsPlaying(false);
+  // Mark lesson complete
+  const handleMarkComplete = async (manualClick = false, verificationPayload?: any) => {
     if (!activeLesson) return;
-    if (isCurrentCompleted) return;
 
-    const dur = videoRef.current?.duration || duration || 0;
-    const cur = videoRef.current?.currentTime || currentTime || dur;
-    const watchSec = Math.round(accumulatedWatchTimeRef.current);
-
-    // If genuine watch duration satisfies requirements, mark complete
-    if (dur > 0 && watchSec >= dur * 0.85) {
-      handleMarkComplete({
-        currentTime: dur,
-        duration: dur,
-        watchDurationSeconds: watchSec,
-      });
-    } else {
-      if (onShowToast) {
-        onShowToast('You must watch the complete video to finish this lesson.', 'error');
-      }
-    }
-  };
-
-  const formatTime = (secs: number) => {
-    if (isNaN(secs) || secs < 0) return '0:00';
-    const m = Math.floor(secs / 60);
-    const s = Math.floor(secs % 60);
-    return `${m}:${s < 10 ? '0' : ''}${s}`;
-  };
-
-  // Mark lesson as complete via backend API with verification
-  const handleMarkComplete = async (verificationPayload?: {
-    currentTime?: number;
-    duration?: number;
-    watchDurationSeconds?: number;
-  }) => {
-    if (!activeLesson) return;
-    if (isCurrentCompleted) return;
-
-    // For VIDEO lessons, enforce video playback completion condition
-    if (activeLesson.lessonType === 'VIDEO' && !verificationPayload) {
+    if (activeLesson.lessonType === 'VIDEO' && !verificationPayload && !isCurrentCompleted) {
       const dur = videoRef.current?.duration || duration || 0;
       const cur = videoRef.current?.currentTime || currentTime || 0;
-      const watchSec = Math.round(accumulatedWatchTimeRef.current);
-
-      if (dur > 0 && (cur < dur - 3 || watchSec < dur * 0.85)) {
-        if (onShowToast) {
-          onShowToast('Please watch the full video until completion to finish this lesson.', 'info');
-        }
+      const percent = dur > 0 ? (cur / dur) * 100 : 0;
+      if (percent < 85 && manualClick) {
+        if (onShowToast) onShowToast('Please watch at least 90% of the video to complete this lesson.', 'info');
         return;
       }
-      verificationPayload = {
-        currentTime: cur,
-        duration: dur,
-        watchDurationSeconds: watchSec,
-      };
     }
 
+    if (isSubmittingCompletion) return;
     setIsSubmittingCompletion(true);
-    try {
-      const res: any = await dispatch(
-        completeLessonThunk({
-          lessonId: activeLesson.id,
-          ...(verificationPayload || {}),
-        })
-      ).unwrap();
 
-      if (res?.certificateNumber) {
-        setCourseCertificate({
-          id: res.certificateId,
-          certificateNumber: res.certificateNumber,
-          verificationCode: res.verificationCode,
-        });
-      }
+    try {
+      await markLessonComplete(activeLesson.id, {
+        lessonProgress: 100,
+        currentTime: verificationPayload?.currentTime || currentTime,
+        watchDurationSeconds: verificationPayload?.watchDuration || currentTime,
+        duration: verificationPayload?.duration || duration,
+      });
 
       const updated = Array.from(new Set([...completedLessonIds, activeLesson.id]));
       setCompletedLessonIds(updated);
-      try {
-        localStorage.setItem(`ingage_completed_lessons_${courseId}`, JSON.stringify(updated));
-      } catch {
-        // noop
-      }
+      dispatch(setReduxCompletedLessonIds(updated));
 
-      if (onShowToast) {
-        onShowToast(`"${activeLesson.title}" marked as completed!`, 'success');
-      }
+      if (onShowToast) onShowToast(`"${activeLesson.title}" marked as completed! ✓`, 'success');
 
-      // If next lesson exists, start 10-second countdown
+      // Auto next countdown
       if (currentIndex < allLessons.length - 1) {
-        startAutoNextCountdown();
-      }
-
-      // Refresh enrollment status from backend for updated course progress %
-      try {
-        const enrollRes = await getCourseEnrollmentStatus(courseId);
-        setEnrollmentStatus(enrollRes);
-      } catch {
-        // noop
-      }
-
-      // If course is completed or certificate generated, fetch certificate if not yet set
-      if (res?.courseCompleted || res?.certificateGenerated) {
-        try {
-          const cert = await getCourseCertificate(courseId);
-          if (cert?.id) {
-            setCourseCertificate({
-              id: cert.id,
-              certificateNumber: cert.certificateNumber,
-              verificationCode: cert.verificationCode,
-            });
-          }
-        } catch {
-          // noop
-        }
+        setAutoNextCountdown(5);
+        countdownTimerRef.current = setInterval(() => {
+          setAutoNextCountdown((prev) => {
+            if (prev === null || prev <= 1) {
+              clearInterval(countdownTimerRef.current!);
+              countdownTimerRef.current = null;
+              handleNextLesson();
+              return null;
+            }
+            return prev - 1;
+          });
+        }, 1000);
       }
     } catch (err: any) {
-      const msg = typeof err === 'string' ? err : err?.message || 'Unable to complete lesson';
-      if (onShowToast) {
-        onShowToast(msg, 'error');
-      }
+      console.error('Completion error:', err);
     } finally {
       setIsSubmittingCompletion(false);
     }
   };
 
-  // 10-Second Countdown & Auto-Next Handlers
-  const startAutoNextCountdown = () => {
+  // Next / Previous navigation
+  const handleNextLesson = () => {
     if (countdownTimerRef.current) {
       clearInterval(countdownTimerRef.current);
       countdownTimerRef.current = null;
     }
-    setAutoNextCountdown(10);
+    setAutoNextCountdown(null);
 
-    countdownTimerRef.current = setInterval(() => {
-      setAutoNextCountdown((prev) => {
-        if (prev === null || prev <= 1) {
-          if (countdownTimerRef.current) {
-            clearInterval(countdownTimerRef.current);
-            countdownTimerRef.current = null;
-          }
-          handleAutoNextNavigate();
-          return null;
-        }
-        return prev - 1;
-      });
-    }, 1000);
-  };
-
-  const handleAutoNextNavigate = () => {
     if (currentIndex < allLessons.length - 1) {
       const next = allLessons[currentIndex + 1];
       setActiveLessonId(next.id);
@@ -1000,81 +613,7 @@ export function CourseLearnPage({ courseId, onNavigate, onShowToast }: CourseLea
     }
   };
 
-  const handleContinueNow = () => {
-    if (countdownTimerRef.current) {
-      clearInterval(countdownTimerRef.current);
-      countdownTimerRef.current = null;
-    }
-    setAutoNextCountdown(null);
-    handleNextLesson();
-  };
-
-  const handleCancelAutoNext = () => {
-    if (countdownTimerRef.current) {
-      clearInterval(countdownTimerRef.current);
-      countdownTimerRef.current = null;
-    }
-    setAutoNextCountdown(null);
-  };
-
-  // Quiz submission & question navigation handlers
-  const handleSubmitQuizAnswer = async () => {
-    if (selectedOption === null || !activeLesson || quizQuestions.length === 0) return;
-    const currentQ = quizQuestions[currentQuestionIndex];
-    if (!currentQ) return;
-
-    setQuizSubmitting(true);
-    try {
-      const res = await submitQuizAnswer(Number(course?.id || courseId) || 0, activeLesson.id, {
-        questionId: currentQ.id,
-        selectedOptionIndex: selectedOption,
-      });
-      setQuizResult(res);
-
-      if (res.correct && res.quizCompleted) {
-        // Mark lesson completed in local and Redux states
-        const updated = Array.from(new Set([...completedLessonIds, activeLesson.id]));
-        setCompletedLessonIds(updated);
-        dispatch(setReduxCompletedLessonIds(updated));
-        try {
-          localStorage.setItem(`ingage_completed_lessons_${courseId}`, JSON.stringify(updated));
-        } catch {
-          // noop
-        }
-
-        if (onShowToast) {
-          onShowToast('Quiz completed successfully!', 'success');
-        }
-
-        // Auto-next 10-second countdown if next lesson exists
-        if (currentIndex < allLessons.length - 1) {
-          startAutoNextCountdown();
-        }
-      }
-    } catch (err: any) {
-      if (onShowToast) {
-        onShowToast(err?.response?.data?.message || 'Error submitting answer', 'error');
-      }
-    } finally {
-      setQuizSubmitting(false);
-    }
-  };
-
-  const handleNextQuizQuestion = () => {
-    if (currentQuestionIndex < quizQuestions.length - 1) {
-      setCurrentQuestionIndex((prev) => prev + 1);
-      setSelectedOption(null);
-      setQuizResult(null);
-    }
-  };
-
-  const handleRetryQuizQuestion = () => {
-    setSelectedOption(null);
-    setQuizResult(null);
-  };
-
-  // Navigation handlers
-  const handlePreviousLesson = () => {
+  const handlePrevLesson = () => {
     if (countdownTimerRef.current) {
       clearInterval(countdownTimerRef.current);
       countdownTimerRef.current = null;
@@ -1088,126 +627,372 @@ export function CourseLearnPage({ courseId, onNavigate, onShowToast }: CourseLea
     }
   };
 
-  const handleNextLesson = () => {
-    if (countdownTimerRef.current) {
-      clearInterval(countdownTimerRef.current);
-      countdownTimerRef.current = null;
-    }
-    setAutoNextCountdown(null);
-
-    if (!isCurrentCompleted) {
-      if (onShowToast) {
-        onShowToast('Complete this lesson to continue.', 'info');
-      }
-      return;
-    }
-    if (currentIndex < allLessons.length - 1) {
-      const next = allLessons[currentIndex + 1];
-      setActiveLessonId(next.id);
-      dispatch(setReduxActiveLessonId(next.id));
-    }
-  };
-
   const handleSelectLesson = (lessonId: number) => {
     if (countdownTimerRef.current) {
       clearInterval(countdownTimerRef.current);
       countdownTimerRef.current = null;
     }
     setAutoNextCountdown(null);
+    setIsMobileCurriculumOpen(false);
 
     const targetIdx = allLessons.findIndex((l) => l.id === lessonId);
     if (targetIdx === -1) return;
-
-    // Can always view already completed lessons or current lesson
-    if (completedLessonIds.includes(lessonId) || lessonId === activeLesson?.id) {
-      setActiveLessonId(lessonId);
-      dispatch(setReduxActiveLessonId(lessonId));
-      return;
-    }
-
-    // For uncompleted future lessons: ensure prior lesson is completed
-    const priorLesson = allLessons[targetIdx - 1];
-    if (priorLesson && !completedLessonIds.includes(priorLesson.id)) {
-      if (onShowToast) {
-        onShowToast('Complete the previous lesson to unlock this lesson.', 'info');
-      }
-      return;
-    }
 
     setActiveLessonId(lessonId);
     dispatch(setReduxActiveLessonId(lessonId));
   };
 
-  // Safe dynamic course progress calculation based on actual curriculum lesson count
+  // Video playback controls
+  const togglePlay = () => {
+    if (!videoRef.current) return;
+    if (isPlaying) {
+      videoRef.current.pause();
+    } else {
+      videoRef.current.play().then(() => setIsPlaying(true)).catch(() => {});
+    }
+  };
+
+  const handleSeek = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!videoRef.current) return;
+    const time = Number(e.target.value);
+    videoRef.current.currentTime = time;
+    setCurrentTime(time);
+  };
+
+  const handleRewind = (sec = 10) => {
+    if (!videoRef.current) return;
+    videoRef.current.currentTime = Math.max(0, videoRef.current.currentTime - sec);
+  };
+
+  const handleForward = (sec = 10) => {
+    if (!videoRef.current) return;
+    const dur = videoRef.current.duration || duration || 0;
+    videoRef.current.currentTime = Math.min(dur, videoRef.current.currentTime + sec);
+  };
+
+  const toggleMute = () => {
+    if (!videoRef.current) return;
+    const next = !isMuted;
+    setIsMuted(next);
+    videoRef.current.muted = next;
+    try {
+      localStorage.setItem('ingage_video_muted', String(next));
+    } catch {}
+  };
+
+  const handleVolumeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = Number(e.target.value);
+    setVolume(val);
+    const muted = val === 0;
+    setIsMuted(muted);
+    if (videoRef.current) {
+      videoRef.current.volume = val;
+      videoRef.current.muted = muted;
+    }
+    try {
+      localStorage.setItem('ingage_video_volume', String(val));
+      localStorage.setItem('ingage_video_muted', String(muted));
+    } catch {}
+  };
+
+  const handleSpeedChange = (spd: number) => {
+    setPlaybackSpeed(spd);
+    if (videoRef.current) {
+      videoRef.current.playbackRate = spd;
+    }
+    try {
+      localStorage.setItem('ingage_video_speed', String(spd));
+    } catch {}
+  };
+
+  const toggleFullscreen = () => {
+    if (!videoContainerRef.current) return;
+    const el = videoContainerRef.current as any;
+    if (!isFullscreen) {
+      if (el.requestFullscreen) el.requestFullscreen();
+      else if (el.webkitRequestFullscreen) el.webkitRequestFullscreen();
+      else if (el.mozRequestFullScreen) el.mozRequestFullScreen();
+      else if (el.msRequestFullscreen) el.msRequestFullscreen();
+    } else {
+      const doc = document as any;
+      if (doc.exitFullscreen) doc.exitFullscreen();
+      else if (doc.webkitExitFullscreen) doc.webkitExitFullscreen();
+      else if (doc.mozCancelFullScreen) doc.mozCancelFullScreen();
+      else if (doc.msExitFullscreen) doc.msExitFullscreen();
+    }
+  };
+
+  // Toggle section collapse
+  const toggleSection = (secId: number) => {
+    setExpandedSections((prev) => ({
+      ...prev,
+      [secId]: !prev[secId],
+    }));
+  };
+
+  // Counts & stats
   const totalLessonsCount = allLessons.length;
   const completedCount = completedLessonIds.length;
   const progressPercent = totalLessonsCount > 0
     ? Math.min(100, Math.round((completedCount / totalLessonsCount) * 100))
     : 0;
 
-  // Real authenticated user information for dynamic watermark
+  const totalQuizzesCount = allLessons.filter((l) => l.lessonType === 'QUIZ').length;
+  const totalProjectsCount = allLessons.filter((l) => l.lessonType === 'ASSIGNMENT').length;
+
   const watermarkName = authUser?.name || 'Verified Learner';
   const watermarkEmail = authUser?.email || '';
 
+  // Calculate current lesson watch progress percentage
+  const currentLessonPercent = useMemo(() => {
+    if (isCurrentCompleted) return 100;
+    if (duration > 0) return Math.min(100, Math.round((currentTime / duration) * 100));
+    return 0;
+  }, [isCurrentCompleted, currentTime, duration]);
+
   return (
-    <div className="w-full bg-[#f8fafc] min-h-[calc(100vh-4.5rem)] text-gray-900 pb-16 flex flex-col select-text">
-      {/* 1. Dedicated Course Player Navigation Bar */}
-      <div className="bg-white border-b border-gray-200 sticky top-0 z-30 shadow-2xs">
-        <div className="w-full px-4 sm:px-6 lg:px-8 py-3 flex items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
+    <div className="w-full bg-[#f8fafc] min-h-screen text-slate-900 pb-20 flex flex-col select-text font-sans">
+      {/* 1. TOP HEADER: Back button, Course Title, Dynamic Breadcrumb & Student Profile */}
+      <header className="bg-white border-b border-slate-200 sticky top-0 z-40 shadow-xs">
+        <div className="w-full px-4 sm:px-6 lg:px-8 py-3.5 flex items-center justify-between gap-4 max-w-7xl mx-auto">
+          {/* Left: Back Arrow, Course Title, Dynamic Breadcrumb */}
+          <div className="flex items-center gap-3 min-w-0">
             <button
-              id="back-to-course-btn"
+              type="button"
               onClick={() => onNavigate(`/courses/${courseId}`)}
-              className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl text-xs sm:text-sm font-semibold text-gray-600 hover:text-gray-900 hover:bg-gray-100 transition-colors cursor-pointer"
+              className="p-2 rounded-xl bg-slate-50 hover:bg-slate-100 text-slate-700 hover:text-slate-900 border border-slate-200 transition-colors cursor-pointer shrink-0"
+              title="Back to Course Details"
             >
-              <ChevronLeft className="w-4 h-4" />
-              <span>Course Overview</span>
+              <ArrowLeft className="w-4 h-4" />
             </button>
-            <div className="h-4 w-px bg-gray-200 hidden sm:block" />
-            <span className="text-xs sm:text-sm font-bold text-gray-900 truncate max-w-xs sm:max-w-md lg:max-w-lg">
-              {course?.title || 'Course Learning'}
-            </span>
+
+            <div className="min-w-0">
+              <h1 className="text-sm sm:text-base font-bold text-slate-900 truncate">
+                {course?.title || content?.title || 'Course Learning'}
+              </h1>
+              {activeLesson && (
+                <div className="flex items-center gap-1.5 text-xs text-slate-500 font-medium truncate mt-0.5">
+                  <span className="text-green-700 font-semibold truncate">
+                    Module {activeSectionIdx + 1}: {activeSection?.title || activeLesson.sectionTitle}
+                  </span>
+                  <span>&gt;</span>
+                  <span className="text-slate-700 font-medium truncate">{activeLesson.title}</span>
+                </div>
+              )}
+            </div>
           </div>
 
-          {/* Course Overall Progress Indicator */}
-          <div className="flex items-center gap-3">
-            <div className="hidden sm:flex flex-col items-end">
-              <span className="text-[11px] font-bold text-gray-500 uppercase tracking-wider">
-                Course Progress
-              </span>
-              <span className="text-xs font-black text-gray-900">
-                {progressPercent}% Complete
-              </span>
-            </div>
+          {/* Right: Authenticated Student Profile & Dropdown */}
+          <div className="relative shrink-0">
+            <button
+              type="button"
+              onClick={() => setIsProfileMenuOpen(!isProfileMenuOpen)}
+              className="flex items-center gap-2.5 p-1.5 sm:px-3 sm:py-1.5 rounded-xl hover:bg-slate-50 border border-transparent hover:border-slate-200 transition cursor-pointer"
+            >
+              <div className="w-8 h-8 rounded-full bg-linear-to-br from-green-600 to-emerald-700 text-white font-bold text-xs flex items-center justify-center shadow-xs shrink-0">
+                {authUser?.name ? authUser.name.charAt(0).toUpperCase() : 'S'}
+              </div>
+              <div className="hidden sm:block text-left">
+                <div className="text-xs font-bold text-slate-900 truncate max-w-[120px]">
+                  {authUser?.name || 'Verified Learner'}
+                </div>
+                <div className="text-[10px] text-slate-400 font-semibold uppercase tracking-wider">
+                  {authUser?.role || 'Learner'}
+                </div>
+              </div>
+              <ChevronDown className="w-3.5 h-3.5 text-slate-400 hidden sm:block" />
+            </button>
 
-            <div className="w-24 sm:w-32 bg-gray-200 rounded-full h-2 overflow-hidden">
-              <div
-                className="h-full bg-[#8DB600] rounded-full transition-all duration-500"
-                style={{ width: `${progressPercent}%` }}
-              />
-            </div>
+            {/* Profile Dropdown Menu */}
+            {isProfileMenuOpen && (
+              <div className="absolute right-0 mt-2 w-52 bg-white rounded-2xl border border-slate-200 shadow-xl py-2 z-50 animate-in fade-in slide-in-from-top-2">
+                <div className="px-4 py-2 border-b border-slate-100">
+                  <p className="text-xs font-bold text-slate-900">{authUser?.name || 'Student'}</p>
+                  <p className="text-[11px] text-slate-500 truncate">{authUser?.email || ''}</p>
+                </div>
+
+                <div className="py-1">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsProfileMenuOpen(false);
+                      onNavigate('/profile');
+                    }}
+                    className="w-full px-4 py-2 text-left text-xs text-slate-700 hover:bg-slate-50 flex items-center gap-2.5 cursor-pointer"
+                  >
+                    <User className="w-3.5 h-3.5 text-slate-400" />
+                    <span>My Profile</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsProfileMenuOpen(false);
+                      onNavigate('/my-learning');
+                    }}
+                    className="w-full px-4 py-2 text-left text-xs text-slate-700 hover:bg-slate-50 flex items-center gap-2.5 cursor-pointer"
+                  >
+                    <BookOpen className="w-3.5 h-3.5 text-slate-400" />
+                    <span>My Learning</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsProfileMenuOpen(false);
+                      onNavigate('/certificates');
+                    }}
+                    className="w-full px-4 py-2 text-left text-xs text-slate-700 hover:bg-slate-50 flex items-center gap-2.5 cursor-pointer"
+                  >
+                    <Award className="w-3.5 h-3.5 text-slate-400" />
+                    <span>My Certificates</span>
+                  </button>
+                </div>
+
+                <div className="pt-1 border-t border-slate-100">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsProfileMenuOpen(false);
+                      dispatch(logoutUserThunk());
+                      onNavigate('/login');
+                    }}
+                    className="w-full px-4 py-2 text-left text-xs text-rose-600 hover:bg-rose-50 flex items-center gap-2.5 cursor-pointer font-semibold"
+                  >
+                    <LogOut className="w-3.5 h-3.5 text-rose-500" />
+                    <span>Sign Out</span>
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
-      </div>
 
-      {/* 2. Main Content Area */}
-      <div className="w-full px-4 sm:px-6 lg:px-8 py-6 max-w-7xl mx-auto flex-1 flex flex-col">
-        {/* Loading State */}
+        {/* 2. HORIZONTAL LEARNING NAVIGATION TABS */}
+        <div className="w-full px-4 sm:px-6 lg:px-8 border-t border-slate-100 bg-white">
+          <div className="flex items-center gap-1 sm:gap-2 overflow-x-auto py-2 max-w-7xl mx-auto no-scrollbar">
+            <button
+              type="button"
+              onClick={() => setActiveTab('videos')}
+              className={`flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
+                activeTab === 'videos'
+                  ? 'bg-green-600 text-white shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+              }`}
+            >
+              <Video className="w-3.5 h-3.5" />
+              <span>Videos</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setActiveTab('quizzes')}
+              className={`flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
+                activeTab === 'quizzes'
+                  ? 'bg-green-600 text-white shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+              }`}
+            >
+              <HelpCircle className="w-3.5 h-3.5" />
+              <span>Quizzes</span>
+              {totalQuizzesCount > 0 && (
+                <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
+                  activeTab === 'quizzes' ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-600'
+                }`}>
+                  {totalQuizzesCount}
+                </span>
+              )}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setActiveTab('projects')}
+              className={`flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
+                activeTab === 'projects'
+                  ? 'bg-green-600 text-white shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+              }`}
+            >
+              <FolderArchive className="w-3.5 h-3.5" />
+              <span>Projects</span>
+              {totalProjectsCount > 0 && (
+                <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
+                  activeTab === 'projects' ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-600'
+                }`}>
+                  {totalProjectsCount}
+                </span>
+              )}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setActiveTab('live')}
+              className={`flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
+                activeTab === 'live'
+                  ? 'bg-green-600 text-white shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+              }`}
+            >
+              <Radio className="w-3.5 h-3.5" />
+              <span>Live Class</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setActiveTab('reports')}
+              className={`flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
+                activeTab === 'reports'
+                  ? 'bg-green-600 text-white shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+              }`}
+            >
+              <FileBarChart className="w-3.5 h-3.5" />
+              <span>Reports</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setActiveTab('payment')}
+              className={`flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
+                activeTab === 'payment'
+                  ? 'bg-green-600 text-white shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+              }`}
+            >
+              <CreditCard className="w-3.5 h-3.5" />
+              <span>Payment</span>
+            </button>
+
+            {/* Mobile toggle button for Course Curriculum */}
+            <button
+              type="button"
+              onClick={() => setIsMobileCurriculumOpen(!isMobileCurriculumOpen)}
+              className="lg:hidden ml-auto flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-slate-100 hover:bg-slate-200 text-slate-800 transition cursor-pointer shrink-0"
+            >
+              <Menu className="w-3.5 h-3.5" />
+              <span>Curriculum ({completedCount}/{totalLessonsCount})</span>
+            </button>
+          </div>
+        </div>
+      </header>
+
+      {/* Main Container */}
+      <main className="w-full px-4 sm:px-6 lg:px-8 py-6 max-w-7xl mx-auto flex-1 flex flex-col">
+        {/* Loading Skeleton */}
         {loading && (
           <div className="w-full space-y-6 animate-pulse">
-            <div className="aspect-video w-full max-w-4xl mx-auto bg-gray-200 rounded-3xl" />
-            <div className="h-6 w-1/3 bg-gray-200 rounded" />
-            <div className="h-4 w-1/2 bg-gray-100 rounded" />
+            <div className="aspect-video w-full max-w-4xl mx-auto bg-slate-200 rounded-3xl" />
+            <div className="h-6 w-1/3 bg-slate-200 rounded" />
+            <div className="h-4 w-1/2 bg-slate-100 rounded" />
           </div>
         )}
 
-        {/* Error State */}
+        {/* Error Screen */}
         {!loading && error && (
           <div className="p-8 bg-rose-50 border border-rose-200 rounded-3xl flex flex-col items-center justify-center text-center space-y-3 max-w-lg mx-auto my-12">
             <AlertCircle className="w-10 h-10 text-rose-600" />
-            <h3 className="font-bold text-gray-900">Unable to load this lesson</h3>
+            <h3 className="font-bold text-slate-900">Unable to load this course</h3>
             <p className="text-xs text-rose-700">{error}</p>
             <button
+              type="button"
               onClick={loadCourseData}
               className="px-5 py-2 rounded-xl bg-rose-600 text-white font-bold text-xs hover:bg-rose-700 transition-colors cursor-pointer"
             >
@@ -1216,943 +1001,1062 @@ export function CourseLearnPage({ courseId, onNavigate, onShowToast }: CourseLea
           </div>
         )}
 
-        {/* Main 2-Column Responsive Layout */}
-        {!loading && !error && activeLesson && (
+        {/* TAB VIEW 1: VIDEOS / LEARNING PLAYER (Default Primary Interface) */}
+        {!loading && !error && activeTab === 'videos' && activeLesson && (
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-            {/* Left Column (8 cols): Responsive Video Player / Quiz / Text & Lesson Details */}
+            {/* Left 8 Cols (70-75%): Player, Controls, and Lesson Content */}
             <div ref={lessonContentRef} className="lg:col-span-8 space-y-6">
-              {/* Free Preview Notification Banner when user is not enrolled */}
-              {activeLesson.freePreview && !isUserEnrolled && (
-                <div className="bg-lime-50 border border-lime-200 rounded-2xl px-4 py-3 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs text-lime-900 shadow-2xs">
+              {/* Resume Video Prompt Banner */}
+              {resumePromptTime && (
+                <div className="bg-amber-50 border border-amber-200 rounded-2xl px-4 py-3 flex items-center justify-between gap-3 text-xs text-amber-900 shadow-2xs animate-in fade-in">
                   <div className="flex items-center gap-2">
-                    <Sparkles className="w-4 h-4 text-[#8DB600] shrink-0" />
+                    <Clock className="w-4 h-4 text-amber-600 shrink-0" />
                     <span>
-                      <strong>Free Preview Lesson:</strong> You are viewing an unlocked preview lesson. Enroll in this course to access all modules and protected video walkthroughs.
+                      Resume from <strong>{formatDurationMMSS(resumePromptTime)}</strong>?
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <button
+                      type="button"
+                      onClick={handleResumePlayback}
+                      className="px-3 py-1 bg-amber-600 hover:bg-amber-700 text-white rounded-lg font-bold text-xs shadow-2xs transition cursor-pointer"
+                    >
+                      Resume
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleStartFromBeginning}
+                      className="px-3 py-1 bg-white hover:bg-amber-100 text-amber-800 border border-amber-300 rounded-lg font-semibold text-xs transition cursor-pointer"
+                    >
+                      Start from beginning
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Free Preview Banner when user is not enrolled */}
+              {activeLesson.freePreview && !isUserEnrolled && (
+                <div className="bg-green-50 border border-green-200 rounded-2xl px-4 py-3 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs text-green-900 shadow-2xs">
+                  <div className="flex items-center gap-2">
+                    <Sparkles className="w-4 h-4 text-green-600 shrink-0" />
+                    <span>
+                      <strong>Free Preview Lesson:</strong> You are viewing an unlocked preview lesson. Enroll in this course to access all modules and certifications.
                     </span>
                   </div>
                   <button
+                    type="button"
                     onClick={() => onNavigate(`/courses/${courseId}`)}
-                    className="px-3.5 py-1.5 rounded-xl bg-[#8DB600] hover:bg-[#7ba000] text-gray-950 font-bold text-xs transition-colors shrink-0 cursor-pointer"
+                    className="px-3.5 py-1.5 rounded-xl bg-green-600 hover:bg-green-700 text-white font-bold text-xs transition-colors shrink-0 cursor-pointer shadow-xs"
                   >
                     Buy / Enroll Now
                   </button>
                 </div>
               )}
 
-              {/* 1. Responsive Video Container with Security Features & Dynamic Watermark (For VIDEO lessons) */}
+              {/* MAIN MEDIA PLAYER CONTAINER */}
               {activeLesson.lessonType === 'VIDEO' && (
                 <div
                   ref={videoContainerRef}
                   onContextMenu={(e) => e.preventDefault()}
-                  className="relative bg-black rounded-3xl overflow-hidden shadow-xl border border-gray-900 group select-none"
+                  className="relative bg-black rounded-3xl overflow-hidden shadow-xl border border-slate-900 group select-none"
                 >
-                {/* When lesson is protected and user is not enrolled, show locked screen directly */}
-                {isLockedForUser ? (
-                  <div className="w-full aspect-video bg-black flex flex-col items-center justify-center p-6 text-center z-30 space-y-4">
-                    <div className="w-14 h-14 rounded-2xl bg-amber-500/20 border border-amber-500/30 flex items-center justify-center text-amber-400">
-                      <Lock className="w-7 h-7" />
-                    </div>
-                    <div className="space-y-1.5 max-w-md">
-                      <h4 className="text-white font-bold text-base sm:text-lg">
-                        Protected Video Content
-                      </h4>
-                      <p className="text-gray-400 text-xs sm:text-sm">
-                        This video lesson requires an active course enrollment. Please enroll to unlock all curriculum modules and certifications.
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-3 pt-2">
-                      <button
-                        onClick={() => onNavigate(`/courses/${courseId}`)}
-                        className="px-5 py-2.5 rounded-xl bg-[#8DB600] text-gray-950 font-bold text-xs hover:bg-[#7ba000] transition-colors cursor-pointer"
-                      >
-                        Course Overview &amp; Enroll
-                      </button>
-                    </div>
-                  </div>
-                ) : (
-                  /* HTML5 Video Element with Backend Protected Stream URL */
-                  <video
-                    ref={videoRef}
-                    src={videoStreamUrl}
-                    controlsList="nodownload"
-                    disablePictureInPicture
-                    onContextMenu={(e) => e.preventDefault()}
-                    onTimeUpdate={handleTimeUpdate}
-                    onLoadedMetadata={handleTimeUpdate}
-                    onLoadStart={() => setIsVideoLoading(true)}
-                    onLoadedData={handleVideoLoadedData}
-                    onCanPlay={() => {
-                      setIsVideoLoading(false);
-                      setIsVideoBuffering(false);
-                    }}
-                    onWaiting={() => setIsVideoBuffering(true)}
-                    onPlaying={() => {
-                      setIsVideoLoading(false);
-                      setIsVideoBuffering(false);
-                    }}
-                    onError={handleVideoError}
-                    onEnded={handleVideoEnded}
-                    playsInline
-                    className="w-full aspect-video object-contain bg-black cursor-pointer"
-                    onClick={togglePlay}
-                  />
-                )}
-
-                {/* Video Initial Loading State */}
-                {isVideoLoading && !videoError && (
-                  <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/60 pointer-events-none z-15 gap-2">
-                    <Loader2 className="w-9 h-9 text-[#8DB600] animate-spin" />
-                    <span className="text-xs text-white/90 font-medium">Loading video...</span>
-                  </div>
-                )}
-
-                {/* Video Buffering Indicator */}
-                {!isVideoLoading && isVideoBuffering && !videoError && (
-                  <div className="absolute inset-0 flex items-center justify-center bg-black/40 pointer-events-none z-15">
-                    <div className="bg-black/70 backdrop-blur-xs px-3.5 py-1.5 rounded-xl flex items-center gap-2 border border-white/10 shadow-lg">
-                      <Loader2 className="w-4 h-4 text-[#8DB600] animate-spin" />
-                      <span className="text-xs text-white/90 font-medium">Buffering...</span>
-                    </div>
-                  </div>
-                )}
-
-                {/* Video Playback / Network Error Overlay */}
-                {videoError && (
-                  <div className="absolute inset-0 bg-black/90 flex flex-col items-center justify-center p-6 text-center z-30 space-y-4">
-                    <div className="w-14 h-14 rounded-2xl bg-rose-500/20 border border-rose-500/30 flex items-center justify-center text-rose-400">
-                      <AlertCircle className="w-7 h-7" />
-                    </div>
-                    <div className="space-y-1.5 max-w-md">
-                      <h4 className="text-white font-bold text-base sm:text-lg">
-                        Unable to load video
-                      </h4>
-                      <p className="text-gray-400 text-xs sm:text-sm">
-                        {videoError}
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-3 pt-2">
-                      <button
-                        onClick={handleRetryVideo}
-                        className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-[#8DB600] text-gray-950 font-bold text-xs hover:bg-[#7ba000] transition-colors cursor-pointer shadow-lg"
-                      >
-                        <RefreshCw className="w-3.5 h-3.5" />
-                        <span>Try Again</span>
-                      </button>
-                    </div>
-                  </div>
-                )}
-
-                {/* Dynamic Forensic Watermark Overlay (Works in Standard & Fullscreen) */}
-                {!videoError && (
-                  <div
-                    className={`absolute pointer-events-none select-none transition-all duration-1000 ease-in-out z-20 ${
-                      watermarkPos === 'top-left'
-                        ? 'top-4 left-4 text-left'
-                        : watermarkPos === 'top-right'
-                        ? 'top-4 right-4 text-right'
-                        : watermarkPos === 'bottom-left'
-                        ? 'bottom-20 left-4 text-left'
-                        : watermarkPos === 'bottom-right'
-                        ? 'bottom-20 right-4 text-right'
-                        : 'top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-center'
-                    }`}
-                  >
-                    <div className="bg-black/30 backdrop-blur-[2px] px-3 py-1.5 rounded-lg border border-white/10 opacity-30 hover:opacity-40 transition-opacity">
-                      <p className="text-[11px] sm:text-xs font-mono font-bold text-white/90 leading-tight tracking-wide">
-                        {watermarkName}
-                      </p>
-                      {watermarkEmail && (
-                        <p className="text-[9px] sm:text-[10px] font-mono text-white/70 leading-tight mt-0.5">
-                          {watermarkEmail}
+                  {isLockedForUser ? (
+                    <div className="w-full aspect-video bg-black flex flex-col items-center justify-center p-6 text-center z-30 space-y-4">
+                      <div className="w-14 h-14 rounded-2xl bg-amber-500/20 border border-amber-500/30 flex items-center justify-center text-amber-400">
+                        <Lock className="w-7 h-7" />
+                      </div>
+                      <div className="space-y-1.5 max-w-md">
+                        <h4 className="text-white font-bold text-base sm:text-lg">
+                          Protected Video Content
+                        </h4>
+                        <p className="text-slate-400 text-xs sm:text-sm">
+                          This video lesson requires an active course enrollment. Please enroll to unlock all curriculum modules and certifications.
                         </p>
-                      )}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => onNavigate(`/courses/${courseId}`)}
+                        className="px-6 py-2.5 rounded-xl bg-green-600 hover:bg-green-700 text-white font-bold text-xs transition-all shadow-md cursor-pointer"
+                      >
+                        Enroll to Unlock All Lessons
+                      </button>
                     </div>
-                  </div>
-                )}
+                  ) : isYouTubeVideo ? (
+                    /* YouTube Player Embed */
+                    <div className="w-full aspect-video bg-black">
+                      <iframe
+                        src={`https://www.youtube.com/embed/${youtubeVideoId}?autoplay=1&enablejsapi=1&rel=0&modestbranding=1`}
+                        title={activeLesson.title}
+                        className="w-full h-full border-0"
+                        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                        allowFullScreen
+                      />
+                    </div>
+                  ) : (
+                    /* Custom HTML5 Video Player with Controls */
+                    <>
+                      <video
+                        ref={videoRef}
+                        src={videoStreamUrl}
+                        controlsList="nodownload noplaybackrate"
+                        disablePictureInPicture={false}
+                        playsInline
+                        onTimeUpdate={handleTimeUpdate}
+                        onPlay={() => setIsPlaying(true)}
+                        onPause={() => setIsPlaying(false)}
+                        onLoadStart={() => setIsVideoLoading(true)}
+                        onLoadedData={() => {
+                          setIsVideoLoading(false);
+                          setIsVideoBuffering(false);
+                        }}
+                        onWaiting={() => setIsVideoBuffering(true)}
+                        onPlaying={() => {
+                          setIsVideoLoading(false);
+                          setIsVideoBuffering(false);
+                        }}
+                        onError={() => {
+                          setIsVideoLoading(false);
+                          setIsVideoBuffering(false);
+                          setVideoError('Unable to play this video. Please check your connection or try again.');
+                        }}
+                        className="w-full aspect-video object-contain bg-black cursor-pointer"
+                        onClick={togglePlay}
+                      />
 
-                {/* Custom Video Control Overlay Bar */}
-                {!videoError && (
-                  <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/95 via-black/60 to-transparent p-4 space-y-2 opacity-95 group-hover:opacity-100 transition-opacity z-25">
-                    {/* Dual Progress Bar: Green = Watched Progress, White Marker = Current Playback Position */}
-                    <div className="relative w-full h-4 flex items-center group/bar cursor-pointer select-none">
-                      {/* Base Track (Unwatched duration) */}
-                      <div className="w-full h-1.5 bg-white/25 rounded-full overflow-hidden relative group-hover/bar:h-2 transition-all">
-                        {/* Green Line = Actual Watched Progress Only */}
+                      {/* Video Loading Indicator */}
+                      {isVideoLoading && !videoError && (
+                        <div className="absolute inset-0 flex items-center justify-center bg-black/60 z-20 pointer-events-none">
+                          <Loader2 className="w-10 h-10 text-green-500 animate-spin" />
+                        </div>
+                      )}
+
+                      {/* Error Overlay */}
+                      {videoError && (
+                        <div className="absolute inset-0 flex flex-col items-center justify-center p-6 bg-black/90 text-center z-30 space-y-3">
+                          <AlertCircle className="w-10 h-10 text-rose-500" />
+                          <h4 className="text-white font-bold text-sm">Unable to play this video</h4>
+                          <p className="text-slate-400 text-xs max-w-sm">{videoError}</p>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setVideoError(null);
+                              setIsVideoLoading(true);
+                              if (videoRef.current) {
+                                videoRef.current.load();
+                                videoRef.current.play().catch(() => {});
+                              }
+                            }}
+                            className="px-4 py-1.5 bg-green-600 hover:bg-green-700 text-white rounded-lg text-xs font-bold transition cursor-pointer"
+                          >
+                            Retry
+                          </button>
+                        </div>
+                      )}
+
+                      {/* Security Watermark */}
+                      {!videoError && (
                         <div
-                          className="h-full bg-[#8DB600] rounded-full transition-all duration-100"
-                          style={{
-                            width: `${
-                              isCurrentCompleted
-                                ? 100
-                                : duration > 0
-                                ? Math.min(100, Math.max(0, (watchedTime / duration) * 100))
-                                : 0
-                            }%`,
-                          }}
+                          className={`absolute pointer-events-none select-none transition-all duration-1000 ease-in-out z-20 ${
+                            watermarkPos === 'top-left' ? 'top-4 left-4' :
+                            watermarkPos === 'top-right' ? 'top-4 right-4' :
+                            watermarkPos === 'bottom-left' ? 'bottom-16 left-4' :
+                            watermarkPos === 'bottom-right' ? 'bottom-16 right-4' :
+                            'top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2'
+                          }`}
+                        >
+                          <span className="text-[11px] font-mono font-medium text-white/35 bg-black/30 backdrop-blur-xs px-2.5 py-1 rounded-md border border-white/10">
+                            {watermarkName} {watermarkEmail ? `(${watermarkEmail})` : ''}
+                          </span>
+                        </div>
+                      )}
+
+                      {/* Custom Control Bar Overlay */}
+                      {!videoError && (
+                        <div className="absolute inset-x-0 bottom-0 bg-linear-to-t from-black/90 via-black/50 to-transparent p-3 sm:p-4 space-y-2.5 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity duration-200 z-30">
+                          {/* Progress Scrubber */}
+                          <div className="relative w-full h-1.5 hover:h-2.5 transition-all group/progress cursor-pointer flex items-center">
+                            <input
+                              type="range"
+                              min={0}
+                              max={duration || 100}
+                              value={currentTime}
+                              onChange={handleSeek}
+                              className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+                            />
+                            <div className="w-full h-1.5 bg-white/25 rounded-full overflow-hidden">
+                              <div
+                                className="h-full bg-green-500 rounded-full transition-all duration-100"
+                                style={{ width: `${duration > 0 ? (currentTime / duration) * 100 : 0}%` }}
+                              />
+                            </div>
+                          </div>
+
+                          {/* Control Buttons & Indicators */}
+                          <div className="flex items-center justify-between text-white text-xs gap-3">
+                            <div className="flex items-center gap-2 sm:gap-3">
+                              <button
+                                type="button"
+                                onClick={togglePlay}
+                                className="p-1 text-white hover:text-green-400 transition cursor-pointer"
+                                title={isPlaying ? 'Pause' : 'Play'}
+                              >
+                                {isPlaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4 fill-white" />}
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() => handleRewind(10)}
+                                className="p-1 text-white/80 hover:text-white transition cursor-pointer hidden sm:block"
+                                title="Rewind 10 seconds"
+                              >
+                                <RotateCcw className="w-3.5 h-3.5" />
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() => handleForward(10)}
+                                className="p-1 text-white/80 hover:text-white transition cursor-pointer hidden sm:block"
+                                title="Forward 10 seconds"
+                              >
+                                <RotateCw className="w-3.5 h-3.5" />
+                              </button>
+
+                              {/* Volume Controls */}
+                              <div className="flex items-center gap-1.5 group/vol">
+                                <button
+                                  type="button"
+                                  onClick={toggleMute}
+                                  className="p-1 text-white/80 hover:text-white transition cursor-pointer"
+                                  title={isMuted ? 'Unmute' : 'Mute'}
+                                >
+                                  {isMuted || volume === 0 ? (
+                                    <VolumeX className="w-4 h-4 text-rose-400" />
+                                  ) : volume < 0.5 ? (
+                                    <Volume1 className="w-4 h-4" />
+                                  ) : (
+                                    <Volume2 className="w-4 h-4" />
+                                  )}
+                                </button>
+                                <input
+                                  type="range"
+                                  min={0}
+                                  max={1}
+                                  step={0.05}
+                                  value={isMuted ? 0 : volume}
+                                  onChange={handleVolumeChange}
+                                  className="w-14 sm:w-20 h-1 accent-green-500 bg-white/30 rounded cursor-pointer"
+                                />
+                              </div>
+
+                              {/* Current / Duration Timer */}
+                              <span className="font-mono text-[11px] text-white/90">
+                                {formatDurationMMSS(currentTime)} / {formatDurationMMSS(duration)}
+                              </span>
+                            </div>
+
+                            {/* Right: Speed, PiP, Fullscreen */}
+                            <div className="flex items-center gap-2">
+                              {/* Playback Speed selector */}
+                              <div className="flex items-center gap-1 bg-white/10 px-2 py-0.5 rounded-lg border border-white/10 text-[11px]">
+                                {[0.75, 1, 1.25, 1.5, 2].map((spd) => (
+                                  <button
+                                    key={spd}
+                                    type="button"
+                                    onClick={() => handleSpeedChange(spd)}
+                                    className={`px-1.5 py-0.5 rounded transition cursor-pointer ${
+                                      playbackSpeed === spd ? 'bg-green-600 font-bold text-white' : 'text-white/70 hover:text-white'
+                                    }`}
+                                  >
+                                    {spd}x
+                                  </button>
+                                ))}
+                              </div>
+
+                              <button
+                                type="button"
+                                onClick={toggleFullscreen}
+                                className="p-1 text-white/80 hover:text-white transition cursor-pointer"
+                                title="Toggle Fullscreen"
+                              >
+                                {isFullscreen ? <Minimize className="w-4 h-4" /> : <Maximize className="w-4 h-4" />}
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
+              )}
+
+              {/* QUIZ LESSON VIEW */}
+              {activeLesson.lessonType === 'QUIZ' && (
+                <div className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200 shadow-xs space-y-6">
+                  <div className="flex items-center justify-between pb-4 border-b border-slate-100">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-2xl bg-purple-50 text-purple-700 flex items-center justify-center font-bold">
+                        <HelpCircle className="w-5 h-5 text-purple-600" />
+                      </div>
+                      <div>
+                        <h3 className="font-bold text-slate-900 text-base">Module Quiz Assessment</h3>
+                        <p className="text-xs text-slate-500">Test your mastery of core concepts to unlock subsequent lessons.</p>
+                      </div>
+                    </div>
+                    <span className="px-3 py-1 bg-purple-50 text-purple-700 rounded-full font-bold text-xs border border-purple-200">
+                      Passing Score: 70%
+                    </span>
+                  </div>
+
+                  {quizLoading ? (
+                    <div className="py-12 flex flex-col items-center justify-center space-y-2 text-slate-400">
+                      <Loader2 className="w-8 h-8 animate-spin text-purple-600" />
+                      <span className="text-xs">Loading assessment questions...</span>
+                    </div>
+                  ) : quizQuestions.length > 0 ? (
+                    <div className="space-y-6">
+                      <div className="flex items-center justify-between text-xs font-semibold text-slate-500">
+                        <span>Question {currentQuestionIndex + 1} of {quizQuestions.length}</span>
+                        <span>{Math.round(((currentQuestionIndex + 1) / quizQuestions.length) * 100)}% Complete</span>
+                      </div>
+
+                      <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
+                        <div
+                          className="bg-purple-600 h-1.5 rounded-full transition-all duration-300"
+                          style={{ width: `${((currentQuestionIndex + 1) / quizQuestions.length) * 100}%` }}
                         />
                       </div>
 
-                      {/* Current Playback Marker (White Thumb Indicator) */}
-                      <div
-                        className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-3.5 h-3.5 bg-white rounded-full shadow-md border border-black/20 pointer-events-none group-hover/bar:scale-125 transition-transform z-10"
-                        style={{
-                          left: `${
-                            duration > 0
-                              ? Math.min(100, Math.max(0, (currentTime / duration) * 100))
-                              : 0
-                          }%`,
-                        }}
-                      />
+                      <div className="space-y-4">
+                        <h4 className="text-sm sm:text-base font-bold text-slate-900">
+                          {quizQuestions[currentQuestionIndex].questionText || (quizQuestions[currentQuestionIndex] as any).question}
+                        </h4>
 
-                      {/* Transparent Range Input for Accessible & Smooth Seeking */}
-                      <input
-                        type="range"
-                        min={0}
-                        max={duration || 100}
-                        step={0.1}
-                        value={currentTime}
-                        onChange={handleSeek}
-                        className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-20"
-                        title={`Current: ${formatTime(currentTime)} / Watched: ${formatTime(watchedTime)}`}
-                      />
-                    </div>
-
-                    {/* Controls Row */}
-                    <div className="flex items-center justify-between text-white text-xs gap-1 sm:gap-3">
-                      <div className="flex items-center gap-1 sm:gap-2">
-                        {/* Play / Pause */}
-                        <button
-                          onClick={togglePlay}
-                          className="p-1.5 sm:p-2 rounded-lg bg-white/15 hover:bg-white/30 text-white transition-colors cursor-pointer shrink-0"
-                          title={isPlaying ? 'Pause (Space)' : 'Play (Space)'}
-                        >
-                          {isPlaying ? <Pause className="w-3.5 h-3.5 sm:w-4 sm:h-4" /> : <Play className="w-3.5 h-3.5 sm:w-4 sm:h-4 fill-white" />}
-                        </button>
-
-                        {/* Skip backward 10s */}
-                        <button
-                          onClick={handleSkipBackward}
-                          className="hidden xs:flex p-1.5 sm:px-2 rounded-lg bg-white/10 hover:bg-white/20 text-white transition-colors cursor-pointer items-center gap-0.5 sm:gap-1 text-xs font-semibold shrink-0"
-                          title="Skip backward 10s (Left Arrow)"
-                        >
-                          <RotateCcw className="w-3.5 h-3.5" />
-                          <span className="text-[10px] sm:text-[11px] font-mono">10</span>
-                        </button>
-
-                        {/* Skip forward 10s */}
-                        <button
-                          onClick={handleSkipForward}
-                          className="hidden xs:flex p-1.5 sm:px-2 rounded-lg bg-white/10 hover:bg-white/20 text-white transition-colors cursor-pointer items-center gap-0.5 sm:gap-1 text-xs font-semibold shrink-0"
-                          title="Skip forward 10s (Right Arrow)"
-                        >
-                          <span className="text-[10px] sm:text-[11px] font-mono">10</span>
-                          <RotateCw className="w-3.5 h-3.5" />
-                        </button>
-
-                        {/* Time display: 0:27 / 10:15 */}
-                        <span className="font-mono text-white/90 text-[10px] sm:text-xs ml-0.5 sm:ml-1 whitespace-nowrap">
-                          {formatTime(currentTime)} / {formatTime(duration)}
-                        </span>
-
-                        {/* Volume & Mute */}
-                        <div className="flex items-center gap-1.5 ml-1 sm:ml-2">
-                          <button
-                            onClick={toggleMute}
-                            className="p-1 text-white/80 hover:text-white cursor-pointer transition-colors"
-                            title={isMuted ? 'Unmute (M)' : 'Mute (M)'}
-                          >
-                            {isMuted || volume === 0 ? (
-                              <VolumeX className="w-4 h-4 text-rose-400" />
-                            ) : volume < 0.5 ? (
-                              <Volume1 className="w-4 h-4" />
-                            ) : (
-                              <Volume2 className="w-4 h-4" />
-                            )}
-                          </button>
-                          <input
-                            type="range"
-                            min={0}
-                            max={1}
-                            step={0.05}
-                            value={isMuted ? 0 : volume}
-                            onChange={handleVolumeChange}
-                            className="w-14 sm:w-18 h-1 bg-white/30 rounded-lg appearance-none cursor-pointer accent-[#8DB600] hidden sm:inline-block"
-                            title="Volume (Up/Down Arrow)"
-                          />
+                        <div className="space-y-2">
+                          {quizQuestions[currentQuestionIndex].options.map((opt, optIdx) => (
+                            <button
+                              key={optIdx}
+                              type="button"
+                              onClick={() => setSelectedOption(optIdx)}
+                              className={`w-full p-3.5 rounded-xl border text-left text-xs sm:text-sm font-medium transition cursor-pointer flex items-center gap-3 ${
+                                selectedOption === optIdx
+                                  ? 'bg-purple-50 border-purple-600 text-purple-900 font-semibold'
+                                  : 'bg-white border-slate-200 hover:border-slate-300 text-slate-800'
+                              }`}
+                            >
+                              <span className={`w-6 h-6 rounded-lg text-xs font-bold flex items-center justify-center shrink-0 ${
+                                selectedOption === optIdx ? 'bg-purple-600 text-white' : 'bg-slate-100 text-slate-600'
+                              }`}>
+                                {String.fromCharCode(65 + optIdx)}
+                              </span>
+                              <span>{opt}</span>
+                            </button>
+                          ))}
                         </div>
                       </div>
 
-                      {/* Right side controls: Speed & Fullscreen */}
-                      <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
-                        <select
-                          value={playbackSpeed}
-                          onChange={(e) => handleSpeedChange(Number(e.target.value))}
-                          className="bg-white/15 border border-white/20 text-white text-xs rounded-lg px-2 py-1 focus:outline-none cursor-pointer font-medium"
-                          title="Playback Speed"
-                        >
-                          <option value={0.5} className="text-gray-900">0.5x</option>
-                          <option value={0.75} className="text-gray-900">0.75x</option>
-                          <option value={1} className="text-gray-900">1x</option>
-                          <option value={1.25} className="text-gray-900">1.25x</option>
-                          <option value={1.5} className="text-gray-900">1.5x</option>
-                          <option value={1.75} className="text-gray-900">1.75x</option>
-                          <option value={2} className="text-gray-900">2x</option>
-                        </select>
-
+                      {/* Quiz Navigation Buttons */}
+                      <div className="flex items-center justify-between pt-4 border-t border-slate-100">
                         <button
-                          onClick={handleFullscreen}
-                          className="p-1.5 rounded-lg hover:bg-white/20 text-white transition-colors cursor-pointer"
-                          title={isFullscreen ? 'Exit Fullscreen (F)' : 'Fullscreen (F)'}
+                          type="button"
+                          onClick={() => {
+                            if (currentQuestionIndex > 0) {
+                              setCurrentQuestionIndex(currentQuestionIndex - 1);
+                              setSelectedOption(null);
+                            }
+                          }}
+                          disabled={currentQuestionIndex === 0}
+                          className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-100 disabled:opacity-30 disabled:cursor-not-allowed transition cursor-pointer"
                         >
-                          {isFullscreen ? <Minimize className="w-4 h-4" /> : <Maximize className="w-4 h-4" />}
+                          Previous Question
                         </button>
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
 
-            {/* 2. QUIZ LESSON: Question & Answer Section */}
-            {activeLesson.lessonType === 'QUIZ' && (
-              <div className="bg-white rounded-3xl border border-gray-200/90 p-6 sm:p-8 shadow-xs space-y-6 select-none">
-                {/* Quiz Header & Pagination */}
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-gray-100 pb-4">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-2xl bg-lime-100 text-lime-900 border border-lime-200 flex items-center justify-center font-bold shrink-0 shadow-2xs">
-                      <HelpCircle className="w-5 h-5 text-[#8DB600]" />
-                    </div>
-                    <div>
-                      <h3 className="font-bold text-gray-950 text-sm sm:text-base">
-                        Knowledge Check &amp; Assessment
-                      </h3>
-                      <p className="text-xs text-gray-500 font-medium">
-                        Select the correct answer and submit to validate your comprehension.
-                      </p>
-                    </div>
-                  </div>
-                  {quizQuestions.length > 0 && (
-                    <span className="px-3.5 py-1.5 rounded-full text-xs font-bold bg-gray-100 text-gray-800 border border-gray-200 self-start sm:self-auto shrink-0 shadow-2xs">
-                      Question {currentQuestionIndex + 1} of {quizQuestions.length}
-                    </span>
-                  )}
-                </div>
-
-                {/* Quiz Question Progress Indicator */}
-                {quizQuestions.length > 0 && (
-                  <div className="w-full bg-gray-100 rounded-full h-2 overflow-hidden">
-                    <div
-                      className="h-full bg-[#8DB600] rounded-full transition-all duration-300"
-                      style={{
-                        width: `${Math.round(((currentQuestionIndex + (quizResult?.correct ? 1 : 0)) / quizQuestions.length) * 100)}%`
-                      }}
-                    />
-                  </div>
-                )}
-
-                {/* Quiz Loading & Error States */}
-                {quizLoading && (
-                  <div className="py-12 flex flex-col items-center justify-center space-y-3">
-                    <Loader2 className="w-8 h-8 text-[#8DB600] animate-spin" />
-                    <span className="text-xs text-gray-500 font-medium">Loading quiz questions...</span>
-                  </div>
-                )}
-
-                {!quizLoading && quizError && (
-                  <div className="p-6 bg-rose-50 border border-rose-200 rounded-2xl text-center space-y-2">
-                    <AlertCircle className="w-6 h-6 text-rose-600 mx-auto" />
-                    <p className="text-xs text-rose-700 font-semibold">{quizError}</p>
-                  </div>
-                )}
-
-                {/* Active Question & Options */}
-                {!quizLoading && !quizError && quizQuestions.length > 0 && (
-                  <div className="space-y-6">
-                    <div className="space-y-2">
-                      <span className="text-xs font-bold text-[#8DB600] uppercase tracking-wider">
-                        Question {currentQuestionIndex + 1}
-                      </span>
-                      <h2 className="text-base sm:text-lg font-bold text-gray-950 leading-snug">
-                        {quizQuestions[currentQuestionIndex].questionText}
-                      </h2>
-                    </div>
-
-                    {/* Options List */}
-                    <div className="space-y-3">
-                      {quizQuestions[currentQuestionIndex].options.map((opt, idx) => {
-                        const isSelected = selectedOption === idx;
-                        const hasAnswered = quizResult !== null;
-                        const isCorrectOption = hasAnswered && quizResult.correctOptionIndex === idx;
-                        const isUserWrongSelection = hasAnswered && !quizResult.correct && isSelected;
-
-                        return (
-                          <label
-                            key={idx}
+                        {currentQuestionIndex < quizQuestions.length - 1 ? (
+                          <button
+                            type="button"
                             onClick={() => {
-                              if (!quizResult) setSelectedOption(idx);
+                              setCurrentQuestionIndex(currentQuestionIndex + 1);
+                              setSelectedOption(null);
                             }}
-                            className={`flex items-center gap-3.5 p-4 rounded-2xl border transition-all cursor-pointer select-none ${
-                              isSelected && !hasAnswered
-                                ? 'border-[#8DB600] bg-lime-50/50 shadow-xs ring-1 ring-[#8DB600]'
-                                : isCorrectOption
-                                ? 'border-emerald-400 bg-emerald-50/80 text-emerald-950 font-semibold'
-                                : isUserWrongSelection
-                                ? 'border-rose-400 bg-rose-50/80 text-rose-950'
-                                : 'border-gray-200 bg-white hover:border-gray-300 hover:bg-gray-50/70'
-                            }`}
+                            className="px-5 py-2 rounded-xl bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold transition shadow-xs cursor-pointer"
                           >
-                            <input
-                              type="radio"
-                              name={`quiz-question-${currentQuestionIndex}`}
-                              checked={isSelected}
-                              disabled={hasAnswered}
-                              onChange={() => {
-                                if (!quizResult) setSelectedOption(idx);
-                              }}
-                              className="accent-[#8DB600] w-4 h-4 cursor-pointer shrink-0"
-                            />
-                            <span className="text-xs sm:text-sm font-medium leading-relaxed">
-                              {opt}
-                            </span>
-                          </label>
-                        );
-                      })}
-                    </div>
+                            Next Question
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              if (selectedOption === null) return;
+                              setQuizSubmitting(true);
+                              try {
+                                const res = await submitQuizAnswer(Number(course?.id || courseId) || 0, activeLesson.id, {
+                                  questionId: quizQuestions[currentQuestionIndex].id,
+                                  selectedOptionIndex: selectedOption,
+                                });
+                                setQuizResult(res);
+                                if (res.correct || res.quizCompleted) {
+                                  handleMarkComplete(true);
+                                }
+                              } catch (err: any) {
+                                setQuizError('Failed to submit answer.');
+                              } finally {
+                                setQuizSubmitting(false);
+                              }
+                            }}
+                            disabled={quizSubmitting || selectedOption === null}
+                            className="px-5 py-2 rounded-xl bg-green-600 hover:bg-green-700 text-white text-xs font-bold transition shadow-xs cursor-pointer disabled:opacity-50"
+                          >
+                            {quizSubmitting ? 'Evaluating...' : 'Submit Assessment'}
+                          </button>
+                        )}
+                      </div>
 
-                    {/* Answer Feedback & Explanation */}
-                    {quizResult && (
-                      <div
-                        className={`p-4 rounded-2xl border text-xs sm:text-sm space-y-1.5 animate-in fade-in ${
-                          quizResult.correct
-                            ? 'bg-emerald-50 border-emerald-200 text-emerald-950'
-                            : 'bg-rose-50 border-rose-200 text-rose-950'
-                        }`}
-                      >
-                        <div className="flex items-center gap-2 font-bold">
-                          {quizResult.correct ? (
-                            <>
-                              <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
-                              <span>✓ Correct Answer</span>
-                            </>
-                          ) : (
-                            <>
-                              <XCircle className="w-5 h-5 text-rose-600 shrink-0" />
-                              <span>Incorrect Answer</span>
-                            </>
+                      {quizResult && (
+                        <div className={`p-4 rounded-2xl border ${
+                          quizResult.correct ? 'bg-green-50 border-green-200 text-green-900' : 'bg-amber-50 border-amber-200 text-amber-900'
+                        }`}>
+                          <h5 className="font-bold text-sm">{quizResult.correct ? 'Congratulations! Correct Answer ✓' : 'Assessment Result'}</h5>
+                          <p className="text-xs mt-1">{quizResult.explanation || (quizResult.correct ? 'Great job! Lesson progress recorded.' : 'Incorrect option selected. Please review and try again.')}</p>
+                          {quizResult.quizCompleted && (
+                            <p className="text-xs font-semibold text-green-700 mt-1">All questions in this quiz module have been successfully completed! ✓</p>
                           )}
                         </div>
-                        {quizResult.explanation && (
-                          <p className="text-xs leading-relaxed opacity-90 pl-7">
-                            {quizResult.explanation}
-                          </p>
-                        )}
-                      </div>
-                    )}
-
-                    {/* Action Buttons */}
-                    <div className="pt-2 flex items-center justify-between gap-3">
-                      {!quizResult ? (
-                        <button
-                          onClick={handleSubmitQuizAnswer}
-                          disabled={selectedOption === null || quizSubmitting}
-                          className="px-6 py-2.5 rounded-xl bg-[#8DB600] hover:bg-[#7ba000] text-gray-950 font-bold text-xs sm:text-sm transition-all shadow-xs disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer flex items-center gap-2"
-                        >
-                          {quizSubmitting && <Loader2 className="w-4 h-4 animate-spin" />}
-                          <span>Submit Answer</span>
-                        </button>
-                      ) : quizResult.correct ? (
-                        currentQuestionIndex < quizQuestions.length - 1 ? (
-                          <button
-                            onClick={handleNextQuizQuestion}
-                            className="px-6 py-2.5 rounded-xl bg-gray-900 hover:bg-black text-white font-bold text-xs sm:text-sm transition-colors cursor-pointer flex items-center gap-2 shadow-xs"
-                          >
-                            <span>Next Question</span>
-                            <ArrowRight className="w-4 h-4" />
-                          </button>
-                        ) : (
-                          <div className="flex items-center gap-2 text-emerald-700 font-bold text-xs sm:text-sm">
-                            <CheckCircle2 className="w-5 h-5" />
-                            <span>Quiz Completed ✓</span>
-                          </div>
-                        )
-                      ) : (
-                        <button
-                          onClick={handleRetryQuizQuestion}
-                          className="px-5 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs sm:text-sm transition-colors cursor-pointer flex items-center gap-2 shadow-xs"
-                        >
-                          <RefreshCw className="w-3.5 h-3.5" />
-                          <span>Try Again</span>
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* 3. TEXT LESSON: Reading / Article Layout */}
-            {activeLesson.lessonType === 'TEXT' && (
-              <div className="bg-white rounded-3xl border border-gray-200/90 p-6 sm:p-8 shadow-xs space-y-6">
-                <div className="flex items-center justify-between gap-4 border-b border-gray-100 pb-4">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-2xl bg-sky-100 text-sky-900 border border-sky-200 flex items-center justify-center font-bold shrink-0 shadow-2xs">
-                      <BookOpen className="w-5 h-5 text-sky-700" />
-                    </div>
-                    <div>
-                      <h3 className="font-bold text-gray-950 text-sm sm:text-base">
-                        Reading &amp; Architecture Notes
-                      </h3>
-                      <p className="text-xs text-gray-500 font-medium">
-                        Carefully read the module concepts before proceeding to subsequent lessons.
-                      </p>
-                    </div>
-                  </div>
-                  <span className="px-3.5 py-1.5 rounded-full text-xs font-bold bg-sky-50 text-sky-800 border border-sky-200 shrink-0 flex items-center gap-1.5 shadow-2xs">
-                    <Clock className="w-3.5 h-3.5 text-sky-600" />
-                    <span>{activeLesson.duration || '15m read'}</span>
-                  </span>
-                </div>
-
-                <div className="prose prose-sm max-w-none text-gray-800 space-y-4">
-                  <p className="text-sm sm:text-base leading-relaxed text-gray-700">
-                    {activeLesson.description || 'Foundational architectural patterns and best practices for modern enterprise web application design.'}
-                  </p>
-
-                  <div className="bg-gray-50 border border-gray-200 rounded-2xl p-5 space-y-3">
-                    <h4 className="font-bold text-gray-900 text-sm flex items-center gap-2">
-                      <Sparkles className="w-4 h-4 text-[#8DB600]" />
-                      <span>Core Architectural Concepts</span>
-                    </h4>
-                    <ul className="text-xs sm:text-sm text-gray-600 space-y-2 list-disc list-inside">
-                      <li>Component-driven state architecture with unidirectional data flow.</li>
-                      <li>Optimized byte-range partial content streaming with cryptographic token verification.</li>
-                      <li>Separation of concerns across controllers, service logic, and persistence repositories.</li>
-                      <li>Graceful error recovery and authenticated session persistence across browser reloads.</li>
-                    </ul>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Lesson Metadata & Navigation Control Bar */}
-            <div className="bg-white rounded-3xl border border-gray-200/90 p-6 shadow-xs space-y-5">
-                <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
-                  <div className="space-y-1.5">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-lime-100 text-lime-900 border border-lime-200">
-                        {course?.category || 'Curriculum'}
-                      </span>
-                      <span className="text-xs font-semibold text-gray-500">
-                        {activeLesson.sectionTitle}
-                      </span>
-                    </div>
-
-                    <h1 className="text-xl sm:text-2xl font-black text-gray-950 tracking-tight">
-                      {activeLesson.title}
-                    </h1>
-
-                    <div className="flex items-center gap-4 text-xs text-gray-500 font-medium">
-                      <span className="flex items-center gap-1">
-                        <Clock className="w-3.5 h-3.5 text-gray-400" />
-                        <span>{activeLesson.duration || '12m'}</span>
-                      </span>
-                      <span className="flex items-center gap-1">
-                        <User className="w-3.5 h-3.5 text-gray-400" />
-                        <span>Instructor: {course?.instructor || 'Faculty'}</span>
-                      </span>
-                      <span className="flex items-center gap-1 text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-100 font-semibold">
-                        <ShieldCheck className="w-3.5 h-3.5" />
-                        <span>Protected Stream</span>
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* Mark As Complete Button */}
-                  <button
-                    id="mark-lesson-complete-btn"
-                    onClick={() => handleMarkComplete()}
-                    disabled={isSubmittingCompletion || (activeLesson.lessonType === 'VIDEO' && !isCurrentCompleted)}
-                    className={`inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs sm:text-sm font-bold shadow-2xs transition-all shrink-0 ${
-                      isCurrentCompleted
-                        ? 'bg-emerald-100 text-emerald-900 border border-emerald-300 cursor-default'
-                        : activeLesson.lessonType === 'VIDEO'
-                        ? 'bg-gray-150 text-gray-400 border border-gray-200 cursor-not-allowed'
-                        : 'bg-[#8DB600] hover:bg-[#7ba000] text-gray-950 cursor-pointer'
-                    }`}
-                    title={
-                      isCurrentCompleted
-                        ? 'Lesson completed'
-                        : activeLesson.lessonType === 'VIDEO'
-                        ? 'Watch video to 100% to complete'
-                        : 'Mark lesson as complete'
-                    }
-                  >
-                    {isCurrentCompleted ? (
-                      <CheckCircle2 className="w-4 h-4 text-emerald-700" />
-                    ) : activeLesson.lessonType === 'VIDEO' ? (
-                      <Lock className="w-4 h-4 text-gray-400" />
-                    ) : (
-                      <CheckCircle2 className="w-4 h-4 text-gray-950" />
-                    )}
-                    <span>
-                      {isCurrentCompleted
-                        ? 'Completed ✓'
-                        : activeLesson.lessonType === 'VIDEO'
-                        ? 'Watch to 100% to Complete'
-                        : 'Mark as Complete'}
-                    </span>
-                  </button>
-                </div>
-
-                {/* 10-Second Auto-Next Countdown Banner */}
-                {autoNextCountdown !== null && autoNextCountdown > 0 && (
-                  <div className="p-4 bg-lime-50/90 border border-lime-300 rounded-2xl text-xs shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 animate-in fade-in slide-in-from-bottom-2">
-                    <div className="flex items-center gap-2.5 text-lime-950 font-semibold">
-                      <Clock className="w-4 h-4 text-[#8DB600] animate-spin" />
-                      <span>
-                        Next lesson starts in <strong className="text-sm font-black text-gray-950 px-2 py-0.5 bg-lime-200/80 rounded-md">{autoNextCountdown}</strong> second{autoNextCountdown === 1 ? '' : 's'}
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-2 self-end sm:self-auto">
-                      <button
-                        onClick={handleContinueNow}
-                        className="px-3.5 py-1.5 rounded-xl bg-gray-950 hover:bg-black text-white font-bold text-xs transition-colors cursor-pointer shadow-xs flex items-center gap-1"
-                      >
-                        <span>Continue Now</span>
-                        <ArrowRight className="w-3.5 h-3.5" />
-                      </button>
-                      <button
-                        onClick={handleCancelAutoNext}
-                        className="px-3 py-1.5 rounded-xl bg-white hover:bg-gray-100 text-gray-700 border border-gray-200 font-semibold text-xs transition-colors cursor-pointer"
-                      >
-                        Stay on this lesson
-                      </button>
-                    </div>
-                  </div>
-                )}
-
-                {/* Previous / Next Lesson Control Strip */}
-                <div className="pt-4 border-t border-gray-100 flex items-center justify-between gap-2 sm:gap-3">
-                  <button
-                    onClick={handlePreviousLesson}
-                    disabled={currentIndex <= 0}
-                    className="inline-flex items-center gap-1 sm:gap-1.5 px-3 sm:px-4 py-2 rounded-xl border border-gray-200 bg-white hover:bg-gray-50 text-gray-700 font-semibold text-xs disabled:opacity-40 disabled:cursor-not-allowed transition-colors cursor-pointer shrink-0"
-                  >
-                    <ChevronLeft className="w-4 h-4 shrink-0" />
-                    <span className="hidden sm:inline">Previous Lesson</span>
-                    <span className="sm:hidden">Prev</span>
-                  </button>
-
-                  <span className="text-xs font-bold text-gray-400 whitespace-nowrap">
-                    <span className="hidden sm:inline">Lesson </span>{currentIndex + 1} of {allLessons.length}
-                  </span>
-
-                  {/* Next Lesson Control Strip with Lock & Notification */}
-                  {currentIndex < allLessons.length - 1 ? (
-                    <div className="flex flex-col items-end gap-1">
-                      <button
-                        id="next-lesson-btn"
-                        onClick={handleNextLesson}
-                        disabled={!isCurrentCompleted}
-                        className={`inline-flex items-center gap-1 sm:gap-1.5 px-3 sm:px-4 py-2 rounded-xl font-bold text-xs transition-all ${
-                          isCurrentCompleted
-                            ? 'bg-gray-900 hover:bg-black text-white cursor-pointer shadow-2xs'
-                            : 'bg-gray-200 text-gray-400 border border-gray-300 cursor-not-allowed'
-                        }`}
-                        title={!isCurrentCompleted ? 'Complete this lesson to continue' : 'Proceed to next lesson'}
-                      >
-                        <span className="hidden sm:inline">Next Lesson</span>
-                        <span className="sm:hidden">Next</span>
-                        {!isCurrentCompleted ? (
-                          <Lock className="w-3.5 h-3.5 text-gray-400" />
-                        ) : (
-                          <ChevronRight className="w-4 h-4" />
-                        )}
-                      </button>
-                      {!isCurrentCompleted && (
-                        <span className="text-[10px] text-amber-700 font-semibold flex items-center gap-1">
-                          Complete this lesson to continue.
-                        </span>
                       )}
                     </div>
                   ) : (
-                    <div className="flex flex-col items-end gap-1">
-                      <button
-                        id="course-complete-btn"
-                        onClick={() => {
-                          setIsCertModalOpen(true);
-                        }}
-                        disabled={!isCurrentCompleted}
-                        className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-xl font-bold text-xs transition-all ${
-                          isCurrentCompleted
-                            ? 'bg-[#8DB600] hover:bg-[#7ba000] text-gray-950 cursor-pointer shadow-2xs'
-                            : 'bg-gray-200 text-gray-400 border border-gray-300 cursor-not-allowed'
-                        }`}
-                        title={!isCurrentCompleted ? 'Complete this lesson to finish course' : 'View Course Certificate'}
-                      >
-                        <Sparkles className="w-4 h-4" />
-                        <span>Course Completed • Certificate</span>
-                      </button>
-                      {!isCurrentCompleted && (
-                        <span className="text-[10px] text-amber-700 font-semibold flex items-center gap-1">
-                          Complete this lesson to continue.
-                        </span>
-                      )}
+                    <div className="py-8 text-center text-xs text-slate-400">
+                      No questions configured for this quiz yet.
                     </div>
                   )}
                 </div>
+              )}
 
-                {/* Course Completed Celebration & Certificate Card */}
-                {isCourseFullyCompleted && (
-                  <div className="pt-4 border-t border-gray-100 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 p-5 rounded-2xl bg-gradient-to-br from-lime-500/10 via-emerald-500/5 to-slate-900/5 border border-lime-300 shadow-xs animate-in fade-in slide-in-from-bottom-2">
-                    <div className="flex items-start sm:items-center gap-3.5">
-                      <div className="w-12 h-12 rounded-2xl bg-[#8DB600] flex items-center justify-center text-gray-950 shrink-0 shadow-sm">
-                        <Award className="w-6 h-6" />
+              {/* PDF LESSON VIEW */}
+              {activeLesson.lessonType === 'PDF' && (
+                <div className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200 shadow-xs space-y-5">
+                  <div className="flex items-center justify-between pb-4 border-b border-slate-100">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-2xl bg-sky-50 text-sky-700 flex items-center justify-center font-bold">
+                        <FileText className="w-5 h-5 text-sky-600" />
                       </div>
                       <div>
-                        <div className="flex items-center gap-2">
-                          <h4 className="text-base font-black text-gray-950">Course Completed!</h4>
-                          <span className="px-2 py-0.5 rounded-md bg-lime-200/80 text-lime-950 text-[11px] font-bold">100% Mastery</span>
-                        </div>
-                        <p className="text-xs text-gray-600 mt-0.5">
-                          Congratulations! You have successfully completed this course.
-                        </p>
-                        {courseCertificate && (
-                          <p className="text-[11px] font-mono text-gray-600 mt-1">
-                            Certificate ID: <strong className="text-gray-900 font-bold">{courseCertificate.certificateNumber}</strong>
-                          </p>
-                        )}
+                        <h3 className="font-bold text-slate-900 text-base">{activeLesson.title}</h3>
+                        <p className="text-xs text-slate-500">Document Reader &amp; Course Reference Guide</p>
                       </div>
                     </div>
-
-                    <div className="flex items-center gap-2 self-stretch sm:self-auto shrink-0">
-                      <button
-                        onClick={() => setIsCertModalOpen(true)}
-                        className="flex-1 sm:flex-initial inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl bg-gray-950 hover:bg-black text-white font-bold text-xs shadow-xs transition-colors cursor-pointer"
+                    {activeLesson.contentUrl && (
+                      <a
+                        href={activeLesson.contentUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="flex items-center gap-1.5 px-3.5 py-1.5 bg-sky-50 hover:bg-sky-100 text-sky-700 rounded-xl text-xs font-bold border border-sky-200 transition"
                       >
-                        <Award className="w-4 h-4 text-[#8DB600]" />
-                        <span>View Certificate</span>
-                      </button>
-                      <button
-                        onClick={handleDownloadCourseCertificate}
-                        disabled={isDownloadingCert}
-                        className="flex-1 sm:flex-initial inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl bg-[#8DB600] hover:bg-[#7ba000] text-gray-950 font-bold text-xs shadow-xs transition-colors cursor-pointer disabled:opacity-50"
-                      >
-                        {isDownloadingCert ? (
-                          <Loader2 className="w-4 h-4 animate-spin" />
-                        ) : (
-                          <Download className="w-4 h-4" />
-                        )}
-                        <span>{isDownloadingCert ? 'Downloading...' : 'Download Certificate'}</span>
-                      </button>
-                    </div>
+                        <Download className="w-3.5 h-3.5" />
+                        <span>Download PDF</span>
+                      </a>
+                    )}
                   </div>
-                )}
-              </div>
 
-              {/* Lesson Tabs: Overview vs Notes */}
-              <div className="bg-white rounded-3xl border border-gray-200/90 p-6 shadow-xs space-y-4">
-                <div className="flex items-center gap-3 border-b border-gray-100 pb-3">
-                  <button
-                    onClick={() => setActiveTab('overview')}
-                    className={`pb-2 text-xs sm:text-sm font-bold border-b-2 transition-all cursor-pointer ${
-                      activeTab === 'overview'
-                        ? 'border-[#8DB600] text-gray-950'
-                        : 'border-transparent text-gray-400 hover:text-gray-700'
-                    }`}
-                  >
-                    Lesson Overview
-                  </button>
-                  <button
-                    onClick={() => setActiveTab('notes')}
-                    className={`pb-2 text-xs sm:text-sm font-bold border-b-2 transition-all cursor-pointer ${
-                      activeTab === 'notes'
-                        ? 'border-[#8DB600] text-gray-950'
-                        : 'border-transparent text-gray-400 hover:text-gray-700'
-                    }`}
-                  >
-                    Notes &amp; Resources
-                  </button>
+                  {activeLesson.contentUrl ? (
+                    <div className="w-full aspect-[4/3] rounded-2xl overflow-hidden border border-slate-200 bg-slate-100">
+                      <iframe
+                        src={activeLesson.contentUrl}
+                        title={activeLesson.title}
+                        className="w-full h-full border-0"
+                      />
+                    </div>
+                  ) : (
+                    <div className="py-12 text-center text-xs text-slate-400">
+                      Document attachment is being prepared by the instructor.
+                    </div>
+                  )}
                 </div>
+              )}
 
-                {activeTab === 'overview' && (
-                  <div className="space-y-4 text-xs sm:text-sm text-gray-600 leading-relaxed">
-                    <p>{activeLesson.description || 'Welcome to this lesson. Watch the video above to master the foundational concepts.'}</p>
-                    {course?.description && (
-                      <div className="p-4 bg-gray-50 rounded-2xl border border-gray-100 space-y-1">
-                        <span className="text-[11px] font-bold text-gray-400 uppercase tracking-wider">
-                          Course Information
-                        </span>
-                        <p className="text-gray-700 font-medium">{course.description}</p>
+              {/* TEXT LESSON VIEW */}
+              {activeLesson.lessonType === 'TEXT' && (
+                <div className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200 shadow-xs space-y-4">
+                  <div className="flex items-center justify-between pb-4 border-b border-slate-100">
+                    <div>
+                      <h3 className="font-bold text-slate-900 text-base">{activeLesson.title}</h3>
+                      <p className="text-xs text-slate-500">Reading &amp; Foundational Concepts</p>
+                    </div>
+                    <span className="px-3 py-1 bg-slate-100 text-slate-700 rounded-full font-bold text-xs">
+                      {activeLesson.duration || '15m read'}
+                    </span>
+                  </div>
+
+                  <div className="prose prose-sm max-w-none text-slate-700 leading-relaxed space-y-3">
+                    <p>{activeLesson.description || 'Welcome to this lesson. Read through the architectural notes below.'}</p>
+                  </div>
+                </div>
+              )}
+
+              {/* ASSIGNMENT LESSON VIEW */}
+              {activeLesson.lessonType === 'ASSIGNMENT' && (
+                <div className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200 shadow-xs space-y-5">
+                  <div className="flex items-center justify-between pb-4 border-b border-slate-100">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-2xl bg-emerald-50 text-emerald-700 flex items-center justify-center font-bold">
+                        <FolderArchive className="w-5 h-5 text-emerald-600" />
+                      </div>
+                      <div>
+                        <h3 className="font-bold text-slate-900 text-base">{activeLesson.title}</h3>
+                        <p className="text-xs text-slate-500">Hands-on Project &amp; Assignment Submission</p>
+                      </div>
+                    </div>
+                    <span className="px-3 py-1 bg-emerald-50 text-emerald-700 rounded-full font-bold text-xs border border-emerald-200">
+                      Max Marks: 100
+                    </span>
+                  </div>
+
+                  <div className="space-y-4 text-xs text-slate-700">
+                    <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 space-y-1.5">
+                      <h4 className="font-bold text-slate-900 text-sm">Assignment Instructions:</h4>
+                      <p>{activeLesson.description || 'Complete the exercises and submit your solution source code or project report.'}</p>
+                    </div>
+
+                    {assignmentSubmitted ? (
+                      <div className="p-4 bg-green-50 border border-green-200 rounded-2xl text-green-900 font-semibold flex items-center gap-2">
+                        <CheckCircle2 className="w-4 h-4 text-green-600" />
+                        <span>Assignment submitted successfully! Your mentor will review and grade your work.</span>
+                      </div>
+                    ) : (
+                      <div className="space-y-3">
+                        <div className="border-2 border-dashed border-slate-200 rounded-2xl p-6 text-center">
+                          <input
+                            type="file"
+                            id="assignment-file-input"
+                            onChange={(e) => setAssignmentFile(e.target.files?.[0] || null)}
+                            className="hidden"
+                          />
+                          <label htmlFor="assignment-file-input" className="cursor-pointer space-y-1 block">
+                            <Upload className="w-8 h-8 text-slate-400 mx-auto" />
+                            <p className="font-bold text-slate-800 text-xs">
+                              {assignmentFile ? assignmentFile.name : 'Upload Project Archive (.zip, .pdf)'}
+                            </p>
+                            <p className="text-[11px] text-slate-400">Max size 25MB</p>
+                          </label>
+                        </div>
+
+                        <div className="flex justify-end">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setAssignmentSubmitted(true);
+                              handleMarkComplete(true);
+                            }}
+                            disabled={!assignmentFile}
+                            className="px-5 py-2 rounded-xl bg-green-600 hover:bg-green-700 text-white font-bold text-xs shadow-xs transition cursor-pointer disabled:opacity-50"
+                          >
+                            Submit Assignment
+                          </button>
+                        </div>
                       </div>
                     )}
                   </div>
-                )}
+                </div>
+              )}
 
-                {activeTab === 'notes' && (
-                  <div className="space-y-3 text-xs sm:text-sm text-gray-700">
-                    <div className="p-4 bg-lime-50/60 rounded-2xl border border-lime-200/80 space-y-2">
-                      <div className="flex items-center gap-2 font-bold text-lime-900">
-                        <Sparkles className="w-4 h-4 text-[#8DB600]" />
-                        <span>Key Learning Takeaway</span>
+              {/* 5. PREVIOUS / NEXT NAVIGATION CONTROLS */}
+              <div className="bg-white rounded-2xl border border-slate-200 p-4 flex items-center justify-between gap-3 shadow-xs">
+                <button
+                  type="button"
+                  onClick={handlePrevLesson}
+                  disabled={currentIndex === 0}
+                  className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold text-slate-700 hover:bg-slate-100 disabled:opacity-30 disabled:cursor-not-allowed transition cursor-pointer"
+                >
+                  <ChevronLeft className="w-4 h-4" />
+                  <span>Previous Lesson</span>
+                </button>
+
+                {/* Lesson Watch Progress Indicator */}
+                <div className="flex items-center gap-2 text-xs">
+                  {isCurrentCompleted ? (
+                    <span className="flex items-center gap-1.5 text-green-700 font-bold bg-green-50 px-3 py-1 rounded-full border border-green-200">
+                      <CheckCircle2 className="w-3.5 h-3.5 text-green-600" />
+                      <span>Completed</span>
+                    </span>
+                  ) : (
+                    <span className="text-slate-500 font-semibold bg-slate-50 px-3 py-1 rounded-full border border-slate-200">
+                      {currentLessonPercent}% watched
+                    </span>
+                  )}
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleNextLesson}
+                  disabled={currentIndex >= allLessons.length - 1}
+                  className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold bg-green-600 hover:bg-green-700 text-white disabled:opacity-30 disabled:cursor-not-allowed transition cursor-pointer shadow-xs"
+                >
+                  <span>Next Lesson</span>
+                  <ChevronRight className="w-4 h-4" />
+                </button>
+              </div>
+
+              {/* Auto Next Countdown Banner */}
+              {autoNextCountdown !== null && (
+                <div className="bg-green-50 border border-green-200 rounded-2xl p-4 flex items-center justify-between text-xs text-green-900 shadow-xs animate-in fade-in">
+                  <div className="flex items-center gap-2">
+                    <CheckCircle2 className="w-4 h-4 text-green-600 shrink-0" />
+                    <span>Lesson finished! Advancing to next lesson in <strong>{autoNextCountdown}s</strong>...</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleNextLesson}
+                    className="px-3.5 py-1.5 bg-green-600 hover:bg-green-700 text-white rounded-lg font-bold text-xs cursor-pointer shadow-xs transition"
+                  >
+                    Continue to Next Lesson
+                  </button>
+                </div>
+              )}
+
+              {/* 6. LESSON INFORMATION BELOW VIDEO */}
+              <div className="bg-white rounded-3xl border border-slate-200 p-6 sm:p-7 shadow-xs space-y-5">
+                <div>
+                  <div className="flex items-center gap-2 text-xs text-green-700 font-semibold mb-1">
+                    <span>Module {activeSectionIdx + 1}: {activeSection?.title || activeLesson.sectionTitle}</span>
+                  </div>
+                  <h2 className="text-lg sm:text-xl font-bold text-slate-900 tracking-tight">
+                    {activeLesson.title}
+                  </h2>
+                </div>
+
+                {/* Instructor Card */}
+                <div className="flex items-center gap-3 pt-3 border-t border-slate-100">
+                  <div className="w-9 h-9 rounded-full bg-linear-to-br from-green-500 to-emerald-600 text-white font-bold text-xs flex items-center justify-center shadow-xs shrink-0">
+                    {course?.instructor ? course.instructor.charAt(0).toUpperCase() : 'I'}
+                  </div>
+                  <div>
+                    <div className="text-xs font-bold text-slate-900">{course?.instructor || 'Lead Technical Mentor'}</div>
+                    <div className="text-[11px] text-slate-400">Course Instructor &amp; Content Architect</div>
+                  </div>
+                </div>
+
+                {/* Lesson Description */}
+                <div className="pt-3 border-t border-slate-100 text-xs sm:text-sm text-slate-600 leading-relaxed space-y-2">
+                  <h4 className="font-bold text-slate-900 text-xs uppercase tracking-wider">Lesson Overview</h4>
+                  <p>{activeLesson.description || 'Welcome to this lesson. Master the architectural concepts and technical implementations demonstrated in this session.'}</p>
+                </div>
+
+                {/* Resources & Guide Downloads */}
+                <div className="pt-3 border-t border-slate-100 space-y-3">
+                  <h4 className="font-bold text-slate-900 text-xs uppercase tracking-wider">Lesson Resources &amp; Guides</h4>
+                  <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-2xl flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="w-8 h-8 rounded-xl bg-white border border-slate-200 text-slate-600 flex items-center justify-center shrink-0">
+                        <FileText className="w-4 h-4" />
                       </div>
-                      <p className="text-lime-950/90 leading-relaxed text-xs">
-                        Follow along with the hands-on concepts demonstrated in this lesson. Practice the queries and visualizations in your local development environment.
-                      </p>
+                      <div className="min-w-0">
+                        <p className="text-xs font-bold text-slate-900 truncate">Course Syllabus &amp; Technical Architecture Notes</p>
+                        <p className="text-[11px] text-slate-400">PDF Guide • Available for enrolled students</p>
+                      </div>
                     </div>
-
-                    <div className="p-4 bg-gray-50 rounded-2xl border border-gray-100 flex items-center justify-between">
-                      <div className="flex items-center gap-3">
-                        <FileText className="w-5 h-5 text-gray-400" />
-                        <div>
-                          <p className="font-bold text-gray-900 text-xs">Lesson Reference Guide</p>
-                          <p className="text-[11px] text-gray-500">PDF Guide • Available for enrolled learners</p>
-                        </div>
-                      </div>
-                      <span className="px-3 py-1 bg-white border border-gray-200 rounded-lg text-[11px] font-bold text-gray-700">
-                        Included
-                      </span>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (activeLesson.contentUrl) {
+                            window.open(activeLesson.contentUrl, '_blank');
+                          } else {
+                            if (onShowToast) onShowToast('Resource download started', 'info');
+                          }
+                        }}
+                        className="px-3 py-1 bg-white hover:bg-slate-100 text-slate-700 text-xs font-bold rounded-lg border border-slate-200 transition cursor-pointer"
+                      >
+                        View
+                      </button>
                     </div>
                   </div>
-                )}
+                </div>
               </div>
             </div>
 
-            {/* Right Column (4 cols): Course Curriculum Sidebar */}
-            <div className="lg:col-span-4 bg-white rounded-3xl border border-gray-200/90 p-5 sm:p-6 shadow-xs space-y-5 lg:sticky lg:top-20">
-              {/* Curriculum Header */}
-              <div className="space-y-2 pb-4 border-b border-gray-100">
-                <div className="flex items-center justify-between">
-                  <h2 className="text-base font-bold text-gray-950 flex items-center gap-2">
-                    <BookOpen className="w-4 h-4 text-[#8DB600]" />
-                    <span>Course Curriculum</span>
-                  </h2>
-                  <span className="text-xs font-extrabold text-[#8DB600]">
-                    {completedCount} / {totalLessonsCount}
-                  </span>
-                </div>
-                <p className="text-xs text-gray-500">
-                  Select any lesson below to switch or review.
-                </p>
-              </div>
+            {/* Right 4 Cols (25-30%): Sticky Course Curriculum Sidebar */}
+            <aside className={`lg:col-span-4 space-y-5 lg:sticky lg:top-24 ${
+              isMobileCurriculumOpen ? 'fixed inset-0 bg-slate-950/50 backdrop-blur-xs z-50 p-4 flex flex-col justify-end' : ''
+            }`}>
+              <div className="bg-white rounded-3xl border border-slate-200 p-5 sm:p-6 shadow-xs space-y-5 max-h-[calc(100vh-8rem)] overflow-y-auto">
+                {/* Curriculum Header & Course Progress */}
+                <div className="space-y-3 pb-4 border-b border-slate-100">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                      <BookOpen className="w-4 h-4 text-green-600" />
+                      <span>Course Content</span>
+                    </h3>
+                    {isMobileCurriculumOpen && (
+                      <button
+                        type="button"
+                        onClick={() => setIsMobileCurriculumOpen(false)}
+                        className="lg:hidden p-1 text-slate-400 hover:text-slate-600"
+                      >
+                        <X className="w-5 h-5" />
+                      </button>
+                    )}
+                  </div>
 
-              {/* Sections & Lessons Accordion */}
-              <div className="space-y-4 max-h-[calc(100vh-22rem)] overflow-y-auto pr-1">
-                {content?.sections && content.sections.map((section) => (
-                  <div key={section.id} className="space-y-2">
-                    {/* Section Header */}
-                    <div className="px-2 py-1 text-xs font-bold text-gray-400 uppercase tracking-wider">
-                      {section.title}
+                  {/* Course Progress Section */}
+                  <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-2xl space-y-2">
+                    <div className="flex items-center justify-between text-xs font-bold">
+                      <span className="text-slate-700">Course Progress</span>
+                      <span className="text-green-700 font-extrabold">{progressPercent}%</span>
                     </div>
 
-                    {/* Lessons list */}
-                    <div className="space-y-1.5">
-                      {section.lessons.map((lesson) => {
-                        const isCurrent = lesson.id === activeLesson.id;
-                        const isDone = completedLessonIds.includes(lesson.id);
-                        const lessonIdx = allLessons.findIndex((l) => l.id === lesson.id);
-                        const priorLesson = lessonIdx > 0 ? allLessons[lessonIdx - 1] : null;
-                        const isLockedByProgression = priorLesson ? !completedLessonIds.includes(priorLesson.id) && !isDone && !isCurrent : false;
+                    <div className="w-full bg-slate-200 rounded-full h-2 overflow-hidden">
+                      <div
+                        className="bg-green-600 h-2 rounded-full transition-all duration-500"
+                        style={{ width: `${progressPercent}%` }}
+                      />
+                    </div>
 
-                        return (
-                          <button
-                            key={lesson.id}
-                            onClick={() => handleSelectLesson(lesson.id)}
-                            className={`w-full text-left p-3 rounded-2xl border transition-all cursor-pointer flex items-center justify-between gap-3 ${
-                              isCurrent
-                                ? 'bg-lime-50/80 border-[#8DB600] text-gray-950 shadow-2xs'
-                                : isDone
-                                ? 'bg-white border-gray-150 hover:bg-gray-50 text-gray-800'
-                                : isLockedByProgression
-                                ? 'bg-gray-50/50 border-gray-100 opacity-60 text-gray-500'
-                                : 'bg-gray-50/70 border-gray-100 hover:bg-gray-100 text-gray-700'
-                            }`}
-                          >
-                            <div className="flex items-start gap-2.5 min-w-0">
-                              {/* Status Icon */}
-                              {isDone ? (
-                                <div className="w-5 h-5 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0 mt-0.5">
-                                  <Check className="w-3 h-3 stroke-[3]" />
-                                </div>
-                              ) : isCurrent ? (
-                                <div className="w-5 h-5 rounded-full bg-[#8DB600] text-gray-950 flex items-center justify-center shrink-0 mt-0.5">
-                                  <Play className="w-2.5 h-2.5 fill-current ml-0.5" />
-                                </div>
-                              ) : isLockedByProgression ? (
-                                <div className="w-5 h-5 rounded-full border border-gray-200 bg-gray-100 flex items-center justify-center shrink-0 mt-0.5 text-gray-400">
-                                  <Lock className="w-2.5 h-2.5 text-gray-400" />
-                                </div>
-                              ) : (
-                                <div className="w-5 h-5 rounded-full border border-gray-300 flex items-center justify-center shrink-0 mt-0.5 text-gray-400">
-                                  <span className="w-1.5 h-1.5 rounded-full bg-gray-300" />
-                                </div>
-                              )}
-
-                              <div className="min-w-0">
-                                <div className="flex items-center gap-1.5 flex-wrap">
-                                  <p className={`text-xs font-bold line-clamp-1 ${isCurrent ? 'text-gray-950' : 'text-gray-800'}`}>
-                                    {lesson.title}
-                                  </p>
-                                  {lesson.freePreview && !isUserEnrolled && (
-                                    <span className="text-[9px] uppercase font-bold text-lime-700 bg-lime-100 px-1.5 py-0.5 rounded-full shrink-0">
-                                      Free Preview
-                                    </span>
-                                  )}
-                                  {((lesson.locked && !isUserEnrolled && !lesson.freePreview) || isLockedByProgression) && (
-                                    <Lock className="w-3 h-3 text-gray-400 shrink-0" />
-                                  )}
-                                </div>
-                                <span className="text-[11px] text-gray-400">
-                                  {lesson.duration || '10m'} • {lesson.lessonType}
-                                </span>
-                              </div>
-                            </div>
-                          </button>
-                        );
-                      })}
+                    <div className="text-[11px] text-slate-500 font-medium text-right">
+                      {completedCount} / {totalLessonsCount} Lessons Completed
                     </div>
                   </div>
+                </div>
+
+                {/* Modules & Lessons Accordion */}
+                <div className="space-y-4">
+                  {content?.sections && content.sections.map((section, secIdx) => {
+                    const isExpanded = expandedSections[section.id] !== false;
+                    let secSeconds = 0;
+                    section.lessons?.forEach((l: any) => {
+                      secSeconds += parseDurationToSeconds(l.duration, l.durationSeconds || l.duration_seconds);
+                    });
+                    const secDurationHuman = secSeconds > 0 ? formatDurationHuman(secSeconds) : '';
+
+                    return (
+                      <div
+                        key={section.id}
+                        className="border border-slate-200 rounded-2xl overflow-hidden bg-white shadow-2xs transition-all"
+                      >
+                        {/* Module Accordion Header */}
+                        <button
+                          type="button"
+                          onClick={() => toggleSection(section.id)}
+                          className="w-full p-3.5 bg-slate-50/70 hover:bg-slate-100 flex items-center justify-between text-left transition cursor-pointer"
+                        >
+                          <div className="min-w-0 pr-2">
+                            <div className="text-[10px] font-bold text-green-800 uppercase tracking-wider">
+                              Module {secIdx + 1}
+                            </div>
+                            <div className="text-xs font-bold text-slate-900 truncate">
+                              {section.title}
+                            </div>
+                            <div className="text-[11px] text-slate-400 mt-0.5">
+                              {section.lessons?.length || 0} Lessons {secDurationHuman ? `• ${secDurationHuman}` : ''}
+                            </div>
+                          </div>
+                          {isExpanded ? (
+                            <ChevronUp className="w-4 h-4 text-slate-400 shrink-0" />
+                          ) : (
+                            <ChevronDown className="w-4 h-4 text-slate-400 shrink-0" />
+                          )}
+                        </button>
+
+                        {/* Lessons List Inside Module */}
+                        {isExpanded && (
+                          <div className="divide-y divide-slate-100 p-1.5 space-y-1">
+                            {section.lessons?.map((lesson) => {
+                              const isCurrent = lesson.id === activeLesson.id;
+                              const isDone = completedLessonIds.includes(lesson.id);
+                              const isLocked = Boolean(lesson.locked) && !lesson.freePreview && !isUserEnrolled;
+
+                              return (
+                                <button
+                                  key={lesson.id}
+                                  type="button"
+                                  onClick={() => handleSelectLesson(lesson.id)}
+                                  className={`w-full text-left p-2.5 rounded-xl transition-all cursor-pointer flex items-center justify-between gap-2.5 ${
+                                    isCurrent
+                                      ? 'bg-green-50 border border-green-300 shadow-2xs'
+                                      : isDone
+                                      ? 'hover:bg-slate-50'
+                                      : 'hover:bg-slate-50 text-slate-700'
+                                  }`}
+                                >
+                                  {/* Status Icon & Title */}
+                                  <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                                    {isDone ? (
+                                      <div className="w-5 h-5 rounded-full bg-green-100 text-green-700 flex items-center justify-center shrink-0">
+                                        <Check className="w-3 h-3 stroke-[3]" />
+                                      </div>
+                                    ) : isCurrent ? (
+                                      <div className="w-5 h-5 rounded-full bg-green-600 text-white flex items-center justify-center shrink-0 shadow-2xs">
+                                        <Play className="w-2.5 h-2.5 fill-white" />
+                                      </div>
+                                    ) : isLocked ? (
+                                      <div className="w-5 h-5 rounded-full bg-slate-100 text-slate-400 flex items-center justify-center shrink-0">
+                                        <Lock className="w-3 h-3" />
+                                      </div>
+                                    ) : lesson.lessonType === 'QUIZ' ? (
+                                      <div className="w-5 h-5 rounded-full bg-purple-100 text-purple-700 flex items-center justify-center shrink-0">
+                                        <HelpCircle className="w-3 h-3" />
+                                      </div>
+                                    ) : (
+                                      <div className="w-5 h-5 rounded-full border border-slate-300 text-slate-400 flex items-center justify-center shrink-0" />
+                                    )}
+
+                                    <div className="min-w-0 flex-1">
+                                      <p className={`text-xs truncate font-medium ${
+                                        isCurrent ? 'font-bold text-slate-900' : isDone ? 'text-slate-700' : 'text-slate-600'
+                                      }`}>
+                                        {lesson.title}
+                                      </p>
+                                      <p className="text-[10px] text-slate-400 flex items-center gap-1.5 mt-0.5">
+                                        <span>{lesson.lessonType || 'Video'}</span>
+                                        {lesson.duration && (
+                                          <>
+                                            <span>•</span>
+                                            <span>{lesson.duration}</span>
+                                          </>
+                                        )}
+                                      </p>
+                                    </div>
+                                  </div>
+
+                                  {/* Current Progress / Done Badge */}
+                                  {isCurrent && (
+                                    <span className="text-[10px] font-bold text-green-800 bg-green-100 px-2 py-0.5 rounded-full shrink-0">
+                                      {isDone ? '✓ Done' : `${currentLessonPercent}%`}
+                                    </span>
+                                  )}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </aside>
+          </div>
+        )}
+
+        {/* TAB VIEW 2: QUIZZES */}
+        {!loading && !error && activeTab === 'quizzes' && (
+          <div className="bg-white rounded-3xl border border-slate-200 p-6 sm:p-8 shadow-xs space-y-6">
+            <div>
+              <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2">
+                <HelpCircle className="w-5 h-5 text-purple-600" />
+                <span>Course Quizzes &amp; Knowledge Checks</span>
+              </h2>
+              <p className="text-xs text-slate-500 mt-1">Assess your retention across each curriculum module.</p>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {allLessons
+                .filter((l) => l.lessonType === 'QUIZ')
+                .map((quiz, idx) => (
+                  <div key={quiz.id} className="p-5 rounded-2xl border border-slate-200 bg-slate-50 flex flex-col justify-between space-y-3">
+                    <div>
+                      <div className="flex items-center justify-between text-xs text-purple-700 font-bold mb-1">
+                        <span>Quiz {idx + 1}</span>
+                        <span>Passing: 70%</span>
+                      </div>
+                      <h4 className="font-bold text-slate-900 text-sm">{quiz.title}</h4>
+                      <p className="text-xs text-slate-500 mt-1">{quiz.description || 'Module concept mastery evaluation.'}</p>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        handleSelectLesson(quiz.id);
+                        setActiveTab('videos');
+                      }}
+                      className="w-full py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-xl text-xs font-bold transition shadow-xs cursor-pointer"
+                    >
+                      {completedLessonIds.includes(quiz.id) ? 'Review Quiz' : 'Start Assessment'}
+                    </button>
+                  </div>
                 ))}
+            </div>
+          </div>
+        )}
+
+        {/* TAB VIEW 3: PROJECTS */}
+        {!loading && !error && activeTab === 'projects' && (
+          <div className="bg-white rounded-3xl border border-slate-200 p-6 sm:p-8 shadow-xs space-y-6">
+            <div>
+              <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2">
+                <FolderArchive className="w-5 h-5 text-emerald-600" />
+                <span>Hands-on Projects &amp; Capstones</span>
+              </h2>
+              <p className="text-xs text-slate-500 mt-1">Real-world projects to build your portfolio and demonstrate competency.</p>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {allLessons.filter((l) => l.lessonType === 'ASSIGNMENT').length > 0 ? (
+                allLessons
+                  .filter((l) => l.lessonType === 'ASSIGNMENT')
+                  .map((proj, idx) => (
+                    <div key={proj.id} className="p-5 rounded-2xl border border-slate-200 bg-slate-50 flex flex-col justify-between space-y-3">
+                      <div>
+                        <div className="flex items-center justify-between text-xs text-emerald-700 font-bold mb-1">
+                          <span>Project {idx + 1}</span>
+                          <span>Max Marks: 100</span>
+                        </div>
+                        <h4 className="font-bold text-slate-900 text-sm">{proj.title}</h4>
+                        <p className="text-xs text-slate-500 mt-1">{proj.description || 'Hands-on practical implementation.'}</p>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          handleSelectLesson(proj.id);
+                          setActiveTab('videos');
+                        }}
+                        className="w-full py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition shadow-xs cursor-pointer"
+                      >
+                        Open Project
+                      </button>
+                    </div>
+                  ))
+              ) : (
+                <div className="col-span-2 py-12 text-center text-xs text-slate-400 border border-dashed border-slate-200 rounded-2xl">
+                  No projects configured for this course yet.
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* TAB VIEW 4: LIVE CLASS */}
+        {!loading && !error && activeTab === 'live' && (
+          <div className="bg-white rounded-3xl border border-slate-200 p-6 sm:p-8 shadow-xs space-y-6">
+            <div>
+              <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2">
+                <Radio className="w-5 h-5 text-rose-600" />
+                <span>Live Interactive Mentorship Sessions</span>
+              </h2>
+              <p className="text-xs text-slate-500 mt-1">Join live webinars, architectural reviews, and Q&amp;A sessions with lead industry mentors.</p>
+            </div>
+
+            <div className="p-6 bg-slate-50 border border-slate-200 rounded-2xl flex flex-col sm:flex-row items-center justify-between gap-4">
+              <div className="space-y-1 text-center sm:text-left">
+                <span className="px-2.5 py-0.5 rounded-full bg-rose-100 text-rose-800 text-[10px] font-bold uppercase tracking-wider">
+                  Upcoming Session
+                </span>
+                <h4 className="font-bold text-slate-900 text-base">Weekly Technical Mentoring &amp; Code Review</h4>
+                <p className="text-xs text-slate-500">Every Saturday at 6:00 PM IST • Interactive Cloud Lab</p>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => {
+                  if (onShowToast) onShowToast('Live session link will activate 15 minutes before scheduled start time.', 'info');
+                }}
+                className="px-5 py-2.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl font-bold text-xs shadow-xs transition cursor-pointer shrink-0"
+              >
+                Join Live Stream
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* TAB VIEW 5: REPORTS & LEARNING ANALYTICS */}
+        {!loading && !error && activeTab === 'reports' && (
+          <div className="bg-white rounded-3xl border border-slate-200 p-6 sm:p-8 shadow-xs space-y-6">
+            <div>
+              <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2">
+                <FileBarChart className="w-5 h-5 text-sky-600" />
+                <span>Learning Analytics &amp; Verified Progress Report</span>
+              </h2>
+              <p className="text-xs text-slate-500 mt-1">Detailed breakdown of your course completion metrics and credential eligibility.</p>
+            </div>
+
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+              <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl text-center">
+                <div className="text-[10px] text-slate-400 font-bold uppercase">Progress</div>
+                <div className="text-xl font-black text-slate-900 mt-1">{progressPercent}%</div>
+              </div>
+              <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl text-center">
+                <div className="text-[10px] text-slate-400 font-bold uppercase">Completed</div>
+                <div className="text-xl font-black text-green-700 mt-1">{completedCount} / {totalLessonsCount}</div>
+              </div>
+              <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl text-center">
+                <div className="text-[10px] text-slate-400 font-bold uppercase">Quizzes Passed</div>
+                <div className="text-xl font-black text-purple-700 mt-1">{totalQuizzesCount}</div>
+              </div>
+              <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl text-center">
+                <div className="text-[10px] text-slate-400 font-bold uppercase">Certificate</div>
+                <div className="text-xs font-bold text-slate-900 mt-2">
+                  {progressPercent >= 100 ? (
+                    <span className="text-green-700">Eligible ✓</span>
+                  ) : (
+                    <span className="text-slate-400">In Progress</span>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {progressPercent >= 100 && (
+              <div className="p-5 bg-green-50 border border-green-200 rounded-2xl flex items-center justify-between gap-4">
+                <div className="flex items-center gap-3">
+                  <Award className="w-8 h-8 text-green-600" />
+                  <div>
+                    <h4 className="font-bold text-slate-900 text-sm">Verified Certificate of Completion Ready!</h4>
+                    <p className="text-xs text-slate-600">You have completed all curriculum requirements for this course.</p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsCertModalOpen(true)}
+                  className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-xl text-xs font-bold transition shadow-xs cursor-pointer shrink-0"
+                >
+                  View Certificate
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* TAB VIEW 6: PAYMENT & ENROLLMENT RECEIPT */}
+        {!loading && !error && activeTab === 'payment' && (
+          <div className="bg-white rounded-3xl border border-slate-200 p-6 sm:p-8 shadow-xs space-y-6">
+            <div>
+              <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2">
+                <CreditCard className="w-5 h-5 text-indigo-600" />
+                <span>Course Access &amp; Enrollment Receipt</span>
+              </h2>
+              <p className="text-xs text-slate-500 mt-1">Verified records of your course purchase and lifetime enrollment rights.</p>
+            </div>
+
+            <div className="p-6 bg-slate-50 border border-slate-200 rounded-2xl space-y-4 max-w-xl">
+              <div className="flex items-center justify-between pb-3 border-b border-slate-200">
+                <span className="text-xs font-semibold text-slate-500">Access Status</span>
+                <span className="text-xs font-bold text-green-700 bg-green-100 px-2.5 py-0.5 rounded-full border border-green-200">
+                  {isUserEnrolled ? 'Active Lifetime Access' : 'Guest / Free Preview'}
+                </span>
+              </div>
+
+              <div className="flex items-center justify-between pb-3 border-b border-slate-200">
+                <span className="text-xs font-semibold text-slate-500">Course Plan</span>
+                <span className="text-xs font-bold text-slate-900">{course?.title || 'Professional Certification'}</span>
+              </div>
+
+              <div className="flex items-center justify-between pb-3 border-b border-slate-200">
+                <span className="text-xs font-semibold text-slate-500">Student Account</span>
+                <span className="text-xs font-bold text-slate-900">{authUser?.email || 'Learner'}</span>
+              </div>
+
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-semibold text-slate-500">Verified Certificate</span>
+                <span className="text-xs font-bold text-green-700">Included</span>
               </div>
             </div>
           </div>
         )}
-      </div>
+      </main>
 
-      {/* Official Certificate View Modal */}
+      {/* Certificate Modal View */}
       {isCertModalOpen && (
         <CertificateViewModal
           isOpen={isCertModalOpen}
+          certificate={courseCertificate}
           onClose={() => setIsCertModalOpen(false)}
-          certificate={
-            courseCertificate && Number(courseCertificate.courseId) === Number(courseId)
-              ? courseCertificate
-              : {
-                  id: courseCertificate?.id || 0,
-                  certificateNumber: courseCertificate?.certificateNumber || 'PENDING',
-                  verificationCode: courseCertificate?.verificationCode || '',
-                  studentName:
-                    (user as any)?.name ||
-                    (user as any)?.fullName ||
-                    (user?.email ? user.email.split('@')[0].replace('.', ' ') : 'Student'),
-                  courseId: typeof courseId === 'string' ? parseInt(courseId, 10) : courseId,
-                  courseTitle: content?.title || course?.title || 'Course Completion',
-                  courseCategory: content?.category || course?.category || 'Professional Learning',
-                  courseDuration: content?.duration || course?.duration || '',
-                  instructor: content?.instructor || course?.instructor || 'Lead Instructor',
-                  formattedDate: new Date().toLocaleDateString('en-US', {
-                    month: 'short',
-                    day: 'numeric',
-                    year: 'numeric',
-                  }),
-                  issuedAt: new Date().toISOString(),
-                  status: 'ACTIVE',
-                  verificationUrl: `/certificate/verify/${courseCertificate?.verificationCode || ''}`,
-                  downloadUrl: courseCertificate?.id ? `/api/certificates/${courseCertificate.id}/download` : '',
-                }
-          }
-          onNavigate={onNavigate}
-          onShowToast={onShowToast}
         />
       )}
     </div>
