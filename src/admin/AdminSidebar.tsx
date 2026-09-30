@@ -1,5 +1,5 @@
 "use client";
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   LayoutDashboard,
   BookOpen,
@@ -16,7 +16,10 @@ import {
   LogOut,
   ChevronLeft,
   ChevronRight,
+  ChevronDown,
   X,
+  Target,
+  Trophy,
 } from 'lucide-react';
 
 export interface AdminSidebarProps {
@@ -29,10 +32,17 @@ export interface AdminSidebarProps {
   onCloseMobile: () => void;
 }
 
+interface SubNavItem {
+  name: string;
+  path: string;
+  icon: React.ElementType;
+}
+
 interface NavItem {
   name: string;
   path: string;
   icon: React.ElementType;
+  children?: SubNavItem[];
 }
 
 interface NavGroup {
@@ -59,6 +69,23 @@ const navGroups: NavGroup[] = [
         name: 'Courses',
         path: '/admin/courses',
         icon: BookOpen,
+        children: [
+          {
+            name: 'InGage Courses',
+            path: '/admin/courses/ingage',
+            icon: BookOpen,
+          },
+          {
+            name: 'Career Courses',
+            path: '/admin/courses/career',
+            icon: Target,
+          },
+          {
+            name: 'Google Courses',
+            path: '/admin/courses/google',
+            icon: Trophy,
+          },
+        ],
       },
       {
         name: 'Categories',
@@ -164,6 +191,15 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
   mobileOpen,
   onCloseMobile,
 }) => {
+  // Course dropdown state: auto-expand if on any course route
+  const [coursesExpanded, setCoursesExpanded] = useState<boolean>(true);
+
+  useEffect(() => {
+    if (currentPath.startsWith('/admin/courses')) {
+      setCoursesExpanded(true);
+    }
+  }, [currentPath]);
+
   const isItemActive = (path: string): boolean => {
     // Dashboard
     if (path === '/admin') {
@@ -182,7 +218,26 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
       );
     }
 
+    // Parent Courses item
+    if (path === '/admin/courses') {
+      return (
+        currentPath === '/admin/courses' ||
+        currentPath.startsWith('/admin/courses/')
+      );
+    }
+
     return currentPath === path || currentPath.startsWith(`${path}/`);
+  };
+
+  const isSubItemActive = (subPath: string): boolean => {
+    if (subPath === '/admin/courses/ingage') {
+      return (
+        currentPath === '/admin/courses/ingage' ||
+        currentPath === '/admin/courses' ||
+        currentPath === '/admin/courses/'
+      );
+    }
+    return currentPath === subPath || currentPath.startsWith(`${subPath}/`);
   };
 
   const handleNavigation = (path: string) => {
@@ -190,33 +245,46 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
     onCloseMobile();
   };
 
+  const toggleCoursesDropdown = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (collapsed) {
+      onToggleCollapse(); // expand sidebar if currently collapsed
+      setCoursesExpanded(true);
+    } else {
+      setCoursesExpanded((prev) => !prev);
+    }
+  };
+
   const sidebarContent = (
     <div className="flex h-full flex-col border-r border-emerald-900/60 bg-[#08281a] text-slate-200 select-none">
-
       {/* =========================================================
           BRAND HEADER
       ========================================================= */}
       <div className="flex h-16 shrink-0 items-center gap-3 border-b border-emerald-900/50 px-4">
-
-        {/* Logo */}
+        {/* Brand Icon */}
         <div
           className="
-            grid h-10 w-10 shrink-0 place-items-center
+            flex
+            h-10
+            w-10
+            shrink-0
+            items-center
+            justify-center
             rounded-xl
-            bg-green-600
+            border border-green-400/30
+            bg-gradient-to-br from-green-500 to-emerald-700
             text-white
-            shadow-lg shadow-green-950/40
+            shadow-md
+            shadow-green-950/40
           "
         >
           <GraduationCap className="h-5 w-5" />
         </div>
 
-        {/* Brand */}
+        {/* Title */}
         {!collapsed && (
           <div className="min-w-0 flex-1">
-
             <div className="flex items-center gap-2">
-
               <span className="truncate text-xl font-bold tracking-tight text-white">
                 in<span className="text-lime-400">gage</span>
               </span>
@@ -238,13 +306,11 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
               >
                 Admin
               </span>
-
             </div>
 
             <p className="mt-0.5 text-xs font-normal text-emerald-200/70">
               LMS Admin Panel
             </p>
-
           </div>
         )}
 
@@ -283,10 +349,8 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
         "
       >
         <div className="space-y-4">
-
           {navGroups.map((group, groupIndex) => (
             <div key={`${group.title}-${groupIndex}`} className="space-y-1">
-
               {/* Group title */}
               {group.title && !collapsed && (
                 <p
@@ -306,78 +370,200 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
               )}
 
               {/* Navigation items */}
-              {group.items.map(({ name, path, icon: Icon }) => {
-                const active = isItemActive(path);
+              {group.items.map((item) => {
+                const Icon = item.icon;
+                const hasChildren = item.children && item.children.length > 0;
+                const active = isItemActive(item.path);
 
-                return (
-                  <button
-                    key={path}
-                    type="button"
-                    onClick={() => handleNavigation(path)}
-                    title={collapsed ? name : undefined}
-                    aria-current={active ? 'page' : undefined}
-                    className={`
-                      group
-                      flex
-                      w-full
-                      items-center
-                      gap-3
-                      rounded-xl
-                      px-3
-                      py-2.5
-                      text-sm
-                      ${active ? 'font-semibold' : 'font-medium'}
-                      transition-all
-                      duration-200
-
-                      ${active
-                        ? `
-                            bg-green-600
-                            text-white
-                            shadow-md
-                            shadow-green-950/30
-                          `
-                        : `
-                            text-emerald-100/75
-                            hover:bg-white/[0.07]
-                            hover:text-white
-                          `
-                      }
-
-                      ${collapsed ? 'justify-center px-2' : ''}
-                    `}
-                  >
-
-                    {/* Icon */}
-                    <Icon
+                // Normal Single-Item Button
+                if (!hasChildren) {
+                  return (
+                    <button
+                      key={item.path}
+                      type="button"
+                      onClick={() => handleNavigation(item.path)}
+                      title={collapsed ? item.name : undefined}
+                      aria-current={active ? 'page' : undefined}
                       className={`
-                        h-[18px]
-                        w-[18px]
-                        shrink-0
-                        transition-colors
+                        group
+                        flex
+                        w-full
+                        items-center
+                        gap-3
+                        rounded-xl
+                        px-3
+                        py-2.5
+                        text-sm
+                        ${active ? 'font-semibold' : 'font-medium'}
+                        transition-all
                         duration-200
 
-                        ${active
-                          ? 'text-white'
-                          : 'text-emerald-300/70 group-hover:text-green-300'
+                        ${
+                          active
+                            ? `
+                              bg-green-600
+                              text-white
+                              shadow-md
+                              shadow-green-950/30
+                            `
+                            : `
+                              text-emerald-100/75
+                              hover:bg-white/[0.07]
+                              hover:text-white
+                            `
                         }
+
+                        ${collapsed ? 'justify-center px-2' : ''}
                       `}
-                    />
+                    >
+                      {/* Icon */}
+                      <Icon
+                        className={`
+                          h-[18px]
+                          w-[18px]
+                          shrink-0
+                          transition-colors
+                          duration-200
 
-                    {/* Label */}
-                    {!collapsed && (
-                      <span className="truncate">
-                        {name}
-                      </span>
+                          ${
+                            active
+                              ? 'text-white'
+                              : 'text-emerald-300/70 group-hover:text-green-300'
+                          }
+                        `}
+                      />
+
+                      {/* Label */}
+                      {!collapsed && (
+                        <span className="truncate">{item.name}</span>
+                      )}
+                    </button>
+                  );
+                }
+
+                // Expandable Dropdown Item (Courses)
+                return (
+                  <div key={item.path} className="space-y-1">
+                    <button
+                      type="button"
+                      onClick={
+                        collapsed
+                          ? () => handleNavigation('/admin/courses/ingage')
+                          : toggleCoursesDropdown
+                      }
+                      title={collapsed ? item.name : undefined}
+                      className={`
+                        group
+                        flex
+                        w-full
+                        items-center
+                        justify-between
+                        rounded-xl
+                        px-3
+                        py-2.5
+                        text-sm
+                        font-medium
+                        transition-all
+                        duration-200
+                        cursor-pointer
+
+                        ${
+                          active && !collapsed
+                            ? 'bg-white/[0.08] text-white font-semibold'
+                            : active && collapsed
+                            ? 'bg-green-600 text-white shadow-md'
+                            : 'text-emerald-100/75 hover:bg-white/[0.07] hover:text-white'
+                        }
+
+                        ${collapsed ? 'justify-center px-2' : ''}
+                      `}
+                    >
+                      <div className="flex items-center gap-3 min-w-0">
+                        <Icon
+                          className={`
+                            h-[18px]
+                            w-[18px]
+                            shrink-0
+                            transition-colors
+                            duration-200
+                            ${
+                              active
+                                ? 'text-green-300'
+                                : 'text-emerald-300/70 group-hover:text-green-300'
+                            }
+                          `}
+                        />
+
+                        {!collapsed && (
+                          <span className="truncate">{item.name}</span>
+                        )}
+                      </div>
+
+                      {/* Chevron Arrow Toggle */}
+                      {!collapsed && (
+                        <span
+                          onClick={toggleCoursesDropdown}
+                          className="p-1 rounded-md hover:bg-white/10 text-emerald-300/70 group-hover:text-white transition-colors"
+                        >
+                          {coursesExpanded ? (
+                            <ChevronDown className="h-4 w-4" />
+                          ) : (
+                            <ChevronRight className="h-4 w-4" />
+                          )}
+                        </span>
+                      )}
+                    </button>
+
+                    {/* Sub-Items Menu Tree */}
+                    {!collapsed && coursesExpanded && (
+                      <div className="pl-4 pr-1 py-1 space-y-1 border-l-2 border-emerald-800/40 ml-5 my-1 animate-in fade-in slide-in-from-top-1 duration-150">
+                        {item.children?.map((sub) => {
+                          const SubIcon = sub.icon;
+                          const subActive = isSubItemActive(sub.path);
+
+                          return (
+                            <button
+                              key={sub.path}
+                              type="button"
+                              onClick={() => handleNavigation(sub.path)}
+                              className={`
+                                flex
+                                w-full
+                                items-center
+                                gap-2.5
+                                rounded-lg
+                                px-2.5
+                                py-2
+                                text-xs
+                                transition-all
+                                duration-150
+                                cursor-pointer
+                                ${
+                                  subActive
+                                    ? 'bg-green-600 text-white font-semibold shadow-xs'
+                                    : 'text-emerald-200/70 hover:bg-white/[0.08] hover:text-white'
+                                }
+                              `}
+                            >
+                              <SubIcon
+                                className={`
+                                  h-3.5
+                                  w-3.5
+                                  shrink-0
+                                  ${subActive ? 'text-white' : 'text-emerald-400/70'}
+                                `}
+                              />
+                              <span className="truncate">{sub.name}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
                     )}
-
-                  </button>
+                  </div>
                 );
               })}
-
             </div>
           ))}
-
         </div>
       </nav>
 
@@ -394,7 +580,6 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
           p-2.5
         "
       >
-
         {/* Logout */}
         <button
           type="button"
@@ -421,11 +606,7 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
         >
           <LogOut className="h-[18px] w-[18px] shrink-0" />
 
-          {!collapsed && (
-            <span>
-              Logout
-            </span>
-          )}
+          {!collapsed && <span>Logout</span>}
         </button>
 
         {/* Collapse / Expand */}
@@ -454,7 +635,6 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
             <ChevronLeft className="h-4 w-4" />
           )}
         </button>
-
       </div>
     </div>
   );
@@ -519,10 +699,7 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
           ease-in-out
           md:hidden
 
-          ${mobileOpen
-            ? 'translate-x-0'
-            : '-translate-x-full'
-          }
+          ${mobileOpen ? 'translate-x-0' : '-translate-x-full'}
         `}
       >
         {sidebarContent}

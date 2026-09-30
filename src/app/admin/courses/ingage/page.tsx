@@ -13,7 +13,7 @@ export default function AdminRoute() {
 
   return (
     <AdminLayout
-      currentPath={pathname || '/admin/courses'}
+      currentPath={pathname || '/admin/courses/ingage'}
       onNavigate={(path: string) => router.push(path)}
       currentUser={currentUser}
       onLogout={logout}

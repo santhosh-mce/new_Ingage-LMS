@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import AdminInGageCoursesPage from '@/admin/pages/AdminInGageCoursesPage';
+import AdminCareerCoursesPage from '@/admin/pages/AdminCareerCoursesPage';
 import { useRouter, usePathname } from 'next/navigation';
 import { AdminLayout } from '@/admin/AdminLayout';
 import { useAuth } from '@/context/AuthContext';
@@ -13,12 +13,12 @@ export default function AdminRoute() {
 
   return (
     <AdminLayout
-      currentPath={pathname || '/admin/courses'}
+      currentPath={pathname || '/admin/courses/career'}
       onNavigate={(path: string) => router.push(path)}
       currentUser={currentUser}
       onLogout={logout}
     >
-      <AdminInGageCoursesPage onNavigate={(path: string) => router.push(path)} />
+      <AdminCareerCoursesPage onNavigate={(path: string) => router.push(path)} />
     </AdminLayout>
   );
 }
