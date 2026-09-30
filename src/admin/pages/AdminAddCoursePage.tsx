@@ -20,6 +20,7 @@ import {
   ArrowLeft,
   Save,
   CheckCircle2,
+  Check,
   Plus,
   Trash2,
   Video,
@@ -36,12 +37,32 @@ import {
   RefreshCw,
   Code,
   FileCheck,
+  CheckSquare,
+  ListOrdered,
+  ExternalLink,
+  FileUp,
+  Award,
+  Calendar,
+  ChevronRight,
+  Paperclip,
+  Youtube,
+  Link2,
+  Eye,
+  GripVertical,
+  Play,
   Clock,
   X,
 } from 'lucide-react';
 
 
 // Video duration detection and formatting utilities
+
+export const extractYouTubeId = (url: string): string | null => {
+  if (!url) return null;
+  const match = url.match(/(?:youtu\.be\/|youtube\.com\/(?:embed\/|v\/|watch\?v=|watch\?.+&v=))([\w-]{11})/);
+  return match ? match[1] : null;
+};
+
 export const detectVideoDuration = (file: File): Promise<number> => {
   return new Promise((resolve) => {
     try {
@@ -137,6 +158,562 @@ export const AdminAddCoursePage: React.FC<AdminAddCoursePageProps> = ({
   onShowToast,
 }) => {
   const isEditing = Boolean(courseId);
+
+
+  // Module Expansion State
+  const [expandedSections, setExpandedSections] = useState<Record<number, boolean>>({});
+
+  const toggleSectionExpand = (sectionId: number) => {
+    setExpandedSections((prev) => ({
+      ...prev,
+      [sectionId]: prev[sectionId] === false ? true : false,
+    }));
+  };
+
+  // Drag and Drop state for sections and lessons
+  const [draggedSectionIdx, setDraggedSectionIdx] = useState<number | null>(null);
+  const [draggedLessonInfo, setDraggedLessonInfo] = useState<{ sectionId: number; lessonIdx: number } | null>(null);
+
+  const handleSectionDragStart = (idx: number) => {
+    setDraggedSectionIdx(idx);
+  };
+
+  const handleSectionDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+  };
+
+  const handleSectionDrop = async (targetIdx: number) => {
+    if (draggedSectionIdx === null || draggedSectionIdx === targetIdx) return;
+    const reordered = [...sections];
+    const [moved] = reordered.splice(draggedSectionIdx, 1);
+    reordered.splice(targetIdx, 0, moved);
+    const updated = reordered.map((sec, idx) => ({ ...sec, displayOrder: idx }));
+    setSections(updated);
+    setDraggedSectionIdx(null);
+    try {
+      await Promise.all(
+        updated.map((s, idx) =>
+          updateCourseSection(s.id, { title: s.title, description: s.description, displayOrder: idx } as any)
+        )
+      );
+      if (onShowToast) onShowToast('Module order updated!');
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleLessonDragStart = (sectionId: number, lessonIdx: number) => {
+    setDraggedLessonInfo({ sectionId, lessonIdx });
+  };
+
+  const handleLessonDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+  };
+
+  const handleLessonDrop = async (sectionId: number, targetLessonIdx: number) => {
+    if (!draggedLessonInfo || draggedLessonInfo.sectionId !== sectionId || draggedLessonInfo.lessonIdx === targetLessonIdx) {
+      return;
+    }
+    const sec = sections.find((s) => s.id === sectionId);
+    if (!sec || !sec.lessons) return;
+
+    const reordered = [...sec.lessons];
+    const [moved] = reordered.splice(draggedLessonInfo.lessonIdx, 1);
+    reordered.splice(targetLessonIdx, 0, moved);
+
+    const updatedLessons = reordered.map((les, idx) => ({ ...les, displayOrder: idx }));
+
+    setSections(
+      sections.map((s) => (s.id === sectionId ? { ...s, lessons: updatedLessons } : s))
+    );
+    setDraggedLessonInfo(null);
+
+    try {
+      await Promise.all(
+        updatedLessons.map((l, idx) =>
+          updateCourseLesson(l.id, { displayOrder: idx })
+        )
+      );
+      if (onShowToast) onShowToast('Lesson order updated!');
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  // Module modal extended fields
+  const [sectionStatus, setSectionStatus] = useState<'PUBLISHED' | 'DRAFT'>('PUBLISHED');
+  const [sectionIsFreePreview, setSectionIsFreePreview] = useState(false);
+  const [sectionThumbnail, setSectionThumbnail] = useState('');
+
+  // Comprehensive Add/Edit Lesson Modal State
+  const [lessonModalOpen, setLessonModalOpen] = useState(false);
+  const [lessonModalMode, setLessonModalMode] = useState<'create' | 'edit'>('create');
+  const [currentSectionForLesson, setCurrentSectionForLesson] = useState<any>(null);
+  const [editingLessonId, setEditingLessonId] = useState<number | null>(null);
+
+  const [lessonFormState, setLessonFormState] = useState<{
+    title: string;
+    description: string;
+    lessonType: 'VIDEO' | 'TEXT' | 'PDF' | 'QUIZ' | 'ASSIGNMENT';
+    status: 'PUBLISHED' | 'DRAFT';
+    freePreview: boolean;
+    required: boolean;
+    duration: string;
+    durationSeconds: number;
+    contentUrl: string;
+
+    // Video
+    videoTitle: string;
+    videoSource: 'UPLOAD' | 'YOUTUBE';
+    videoFile: File | null;
+    videoFileName: string;
+    youtubeUrl: string;
+    youtubeVideoId: string;
+    videoUploadPercent: number;
+    videoUploadStatus: 'idle' | 'uploading' | 'uploaded' | 'error';
+    videoUploadError: string | null;
+    videoPreviewActive: boolean;
+
+    // Text
+    textContent: string;
+    textTab: 'write' | 'preview';
+
+    // PDF
+    pdfFile: File | null;
+    pdfFileName: string;
+    pdfUploadPercent: number;
+    pdfUploadStatus: 'idle' | 'uploading' | 'uploaded' | 'error';
+
+    // Quiz
+    quizTitle: string;
+    quizDescription: string;
+    passingScore: number;
+    timeLimit: number;
+    maxAttempts: number;
+    shuffleQuestions: boolean;
+    shuffleOptions: boolean;
+    quizQuestions: Array<{
+      id?: number;
+      questionText: string;
+      questionType: 'MCQ' | 'MULTIPLE' | 'TRUE_FALSE';
+      options: string[];
+      correctAnswer: number;
+      marks: number;
+      explanation: string;
+    }>;
+
+    // Assignment
+    assignmentTitle: string;
+    assignmentInstructions: string;
+    assignmentSubmissionType: 'FILE' | 'TEXT' | 'LINK';
+    assignmentMaxMarks: number;
+    assignmentDueDate: string;
+    assignmentAllowResubmission: boolean;
+    assignmentAttachmentUrl: string;
+  }>({
+    title: '',
+    description: '',
+    lessonType: 'VIDEO',
+    status: 'PUBLISHED',
+    freePreview: false,
+    required: true,
+    duration: '00:00',
+    durationSeconds: 0,
+    contentUrl: '',
+
+    videoTitle: '',
+    videoSource: 'UPLOAD',
+    videoFile: null,
+    videoFileName: '',
+    youtubeUrl: '',
+    youtubeVideoId: '',
+    videoUploadPercent: 0,
+    videoUploadStatus: 'idle',
+    videoUploadError: null,
+    videoPreviewActive: false,
+
+    textContent: '',
+    textTab: 'write',
+
+    pdfFile: null,
+    pdfFileName: '',
+    pdfUploadPercent: 0,
+    pdfUploadStatus: 'idle',
+
+    quizTitle: '',
+    quizDescription: '',
+    passingScore: 70,
+    timeLimit: 30,
+    maxAttempts: 3,
+    shuffleQuestions: false,
+    shuffleOptions: false,
+    quizQuestions: [
+      {
+        questionText: 'What is the primary concept covered in this lesson?',
+        questionType: 'MCQ',
+        options: ['Option A', 'Option B', 'Option C', 'Option D'],
+        correctAnswer: 0,
+        marks: 1,
+        explanation: 'Option A provides the foundational definition.',
+      },
+    ],
+
+    assignmentTitle: '',
+    assignmentInstructions: '',
+    assignmentSubmissionType: 'FILE',
+    assignmentMaxMarks: 100,
+    assignmentDueDate: '',
+    assignmentAllowResubmission: true,
+    assignmentAttachmentUrl: '',
+  });
+
+  // Open Lesson Modal for Create
+  const handleOpenAddLessonModal = (sec: any, defaultType: 'VIDEO' | 'TEXT' | 'PDF' | 'QUIZ' | 'ASSIGNMENT' = 'VIDEO') => {
+    setCurrentSectionForLesson(sec);
+    setLessonModalMode('create');
+    setEditingLessonId(null);
+    setLessonFormState({
+      title: '',
+      description: '',
+      lessonType: defaultType,
+      status: 'PUBLISHED',
+      freePreview: false,
+      required: true,
+      duration: '00:00',
+      durationSeconds: 0,
+      contentUrl: '',
+
+      videoTitle: '',
+      videoSource: 'UPLOAD',
+      videoFile: null,
+      videoFileName: '',
+      youtubeUrl: '',
+      youtubeVideoId: '',
+      videoUploadPercent: 0,
+      videoUploadStatus: 'idle',
+      videoUploadError: null,
+      videoPreviewActive: false,
+
+      textContent: '',
+      textTab: 'write',
+
+      pdfFile: null,
+      pdfFileName: '',
+      pdfUploadPercent: 0,
+      pdfUploadStatus: 'idle',
+
+      quizTitle: '',
+      quizDescription: '',
+      passingScore: 70,
+      timeLimit: 30,
+      maxAttempts: 3,
+      shuffleQuestions: false,
+      shuffleOptions: false,
+      quizQuestions: [
+        {
+          questionText: 'What is the primary concept covered in this lesson?',
+          questionType: 'MCQ',
+          options: ['Option A', 'Option B', 'Option C', 'Option D'],
+          correctAnswer: 0,
+          marks: 1,
+          explanation: '',
+        },
+      ],
+
+      assignmentTitle: '',
+      assignmentInstructions: '',
+      assignmentSubmissionType: 'FILE',
+      assignmentMaxMarks: 100,
+      assignmentDueDate: '',
+      assignmentAllowResubmission: true,
+      assignmentAttachmentUrl: '',
+    });
+    setLessonModalOpen(true);
+  };
+
+  // Open Lesson Modal for Edit
+  const handleOpenEditLessonModal = (sec: any, les: any) => {
+    setCurrentSectionForLesson(sec);
+    setLessonModalMode('edit');
+    setEditingLessonId(les.id);
+
+    const isYt = Boolean(les.videoKey || (les.contentUrl && /youtube\.com|youtu\.be/i.test(les.contentUrl)));
+    const ytId = les.videoKey || extractYouTubeId(les.contentUrl || '') || '';
+
+    let parsedMeta: any = null;
+    try {
+      if (les.description && les.description.startsWith('{') && les.description.endsWith('}')) {
+        parsedMeta = JSON.parse(les.description);
+      }
+    } catch {}
+
+    setLessonFormState({
+      title: les.title || '',
+      description: parsedMeta?.description || les.description || '',
+      lessonType: les.lessonType || 'VIDEO',
+      status: 'PUBLISHED',
+      freePreview: Boolean(les.freePreview),
+      required: les.required !== false,
+      duration: les.duration || '00:00',
+      durationSeconds: les.durationSeconds || 0,
+      contentUrl: les.contentUrl || '',
+
+      videoTitle: les.title || '',
+      videoSource: isYt ? 'YOUTUBE' : 'UPLOAD',
+      videoFile: null,
+      videoFileName: les.contentUrl ? les.contentUrl.split('/').pop() || '' : '',
+      youtubeUrl: isYt ? les.contentUrl || '' : '',
+      youtubeVideoId: ytId,
+      videoUploadPercent: 100,
+      videoUploadStatus: 'idle',
+      videoUploadError: null,
+      videoPreviewActive: false,
+
+      textContent: parsedMeta?.textContent || les.description || '',
+      textTab: 'write',
+
+      pdfFile: null,
+      pdfFileName: les.lessonType === 'PDF' && les.contentUrl ? les.contentUrl.split('/').pop() || '' : '',
+      pdfUploadPercent: 100,
+      pdfUploadStatus: 'idle',
+
+      quizTitle: les.title || '',
+      quizDescription: parsedMeta?.quizDescription || '',
+      passingScore: parsedMeta?.passingScore || 70,
+      timeLimit: parsedMeta?.timeLimit || 30,
+      maxAttempts: parsedMeta?.maxAttempts || 3,
+      shuffleQuestions: Boolean(parsedMeta?.shuffleQuestions),
+      shuffleOptions: Boolean(parsedMeta?.shuffleOptions),
+      quizQuestions: les.quizQuestions && les.quizQuestions.length > 0 ? les.quizQuestions : [
+        {
+          questionText: 'What is the primary concept covered in this lesson?',
+          questionType: 'MCQ',
+          options: ['Option A', 'Option B', 'Option C', 'Option D'],
+          correctAnswer: 0,
+          marks: 1,
+          explanation: '',
+        },
+      ],
+
+      assignmentTitle: les.title || '',
+      assignmentInstructions: parsedMeta?.assignmentInstructions || les.description || '',
+      assignmentSubmissionType: parsedMeta?.assignmentSubmissionType || 'FILE',
+      assignmentMaxMarks: parsedMeta?.assignmentMaxMarks || 100,
+      assignmentDueDate: parsedMeta?.assignmentDueDate || '',
+      assignmentAllowResubmission: parsedMeta?.assignmentAllowResubmission !== false,
+      assignmentAttachmentUrl: les.contentUrl || '',
+    });
+    setLessonModalOpen(true);
+  };
+
+  // Upload video via POST /api/uploads/video
+  const handleLessonVideoUpload = async (file: File) => {
+    setLessonFormState((prev) => ({
+      ...prev,
+      videoFile: file,
+      videoFileName: file.name,
+      videoTitle: prev.videoTitle.trim() ? prev.videoTitle : file.name.replace(/\.[^/.]+$/, '').replace(/[-_]+/g, ' ').trim(),
+      title: prev.title.trim() ? prev.title : file.name.replace(/\.[^/.]+$/, '').replace(/[-_]+/g, ' ').trim(),
+      videoUploadStatus: 'uploading',
+      videoUploadPercent: 20,
+      videoUploadError: null,
+    }));
+
+    try {
+      const durSec = await detectVideoDuration(file);
+      if (durSec > 0) {
+        setLessonFormState((prev) => ({
+          ...prev,
+          durationSeconds: durSec,
+          duration: formatDurationMMSS(durSec),
+        }));
+      }
+    } catch {}
+
+    const formData = new FormData();
+    formData.append('file', file);
+    if (savedCourseId) formData.append('courseId', String(savedCourseId));
+    if (currentSectionForLesson) formData.append('lessonId', String(currentSectionForLesson.id));
+
+    try {
+      setLessonFormState((prev) => ({ ...prev, videoUploadPercent: 50 }));
+      const res = await fetch('/api/uploads/video', {
+        method: 'POST',
+        body: formData,
+      });
+      const data = await res.json();
+      if (!res.ok || !data.url) {
+        throw new Error(data.error || 'Video upload failed.');
+      }
+
+      setLessonFormState((prev) => ({
+        ...prev,
+        contentUrl: data.url,
+        videoUploadPercent: 100,
+        videoUploadStatus: 'uploaded',
+      }));
+      if (onShowToast) onShowToast('Video uploaded successfully!');
+    } catch (err: any) {
+      console.error(err);
+      setLessonFormState((prev) => ({
+        ...prev,
+        videoUploadStatus: 'error',
+        videoUploadError: err.message || 'Failed to upload video.',
+      }));
+    }
+  };
+
+  // Upload PDF via POST /api/uploads/pdf
+  const handleLessonPdfUpload = async (file: File) => {
+    setLessonFormState((prev) => ({
+      ...prev,
+      pdfFile: file,
+      pdfFileName: file.name,
+      title: prev.title.trim() ? prev.title : file.name.replace(/\.[^/.]+$/, '').replace(/[-_]+/g, ' ').trim(),
+      pdfUploadStatus: 'uploading',
+      pdfUploadPercent: 30,
+    }));
+
+    const formData = new FormData();
+    formData.append('file', file);
+
+    try {
+      const res = await fetch('/api/uploads/pdf', {
+        method: 'POST',
+        body: formData,
+      });
+      const data = await res.json();
+      if (!res.ok || !data.url) {
+        throw new Error(data.error || 'PDF upload failed.');
+      }
+
+      setLessonFormState((prev) => ({
+        ...prev,
+        contentUrl: data.url,
+        pdfUploadPercent: 100,
+        pdfUploadStatus: 'uploaded',
+      }));
+      if (onShowToast) onShowToast('PDF uploaded successfully!');
+    } catch (err: any) {
+      console.error(err);
+      setLessonFormState((prev) => ({
+        ...prev,
+        pdfUploadStatus: 'error',
+      }));
+      alert(err.message || 'PDF upload failed.');
+    }
+  };
+
+  // Save Lesson (Create or Update)
+  const handleSaveLessonModal = async () => {
+    if (!currentSectionForLesson) return;
+    if (!lessonFormState.title.trim()) {
+      alert('Lesson title is required.');
+      return;
+    }
+
+    let finalContentUrl = lessonFormState.contentUrl;
+    let finalVideoKey: string | undefined = undefined;
+
+    if (lessonFormState.lessonType === 'VIDEO') {
+      if (lessonFormState.videoSource === 'YOUTUBE') {
+        const ytId = extractYouTubeId(lessonFormState.youtubeUrl);
+        if (!ytId) {
+          alert('Please enter a valid YouTube video URL.');
+          return;
+        }
+        finalContentUrl = lessonFormState.youtubeUrl;
+        finalVideoKey = ytId;
+      } else {
+        if (!finalContentUrl) {
+          alert('Please upload a video or provide a valid video URL.');
+          return;
+        }
+      }
+    }
+
+    if (lessonFormState.lessonType === 'PDF' && !finalContentUrl) {
+      alert('Please upload a PDF document.');
+      return;
+    }
+
+    let metaDescription = lessonFormState.description;
+    if (lessonFormState.lessonType === 'TEXT') {
+      metaDescription = lessonFormState.textContent || lessonFormState.description;
+    } else if (lessonFormState.lessonType === 'QUIZ') {
+      metaDescription = JSON.stringify({
+        quizDescription: lessonFormState.quizDescription,
+        passingScore: lessonFormState.passingScore,
+        timeLimit: lessonFormState.timeLimit,
+        maxAttempts: lessonFormState.maxAttempts,
+        shuffleQuestions: lessonFormState.shuffleQuestions,
+        shuffleOptions: lessonFormState.shuffleOptions,
+      });
+    } else if (lessonFormState.lessonType === 'ASSIGNMENT') {
+      metaDescription = JSON.stringify({
+        assignmentInstructions: lessonFormState.assignmentInstructions,
+        assignmentSubmissionType: lessonFormState.assignmentSubmissionType,
+        assignmentMaxMarks: lessonFormState.assignmentMaxMarks,
+        assignmentDueDate: lessonFormState.assignmentDueDate,
+        assignmentAllowResubmission: lessonFormState.assignmentAllowResubmission,
+      });
+    }
+
+    const payload: any = {
+      title: lessonFormState.title.trim(),
+      description: metaDescription,
+      lessonType: lessonFormState.lessonType,
+      contentUrl: finalContentUrl,
+      duration: lessonFormState.duration || '10:00',
+      durationSeconds: lessonFormState.durationSeconds || 0,
+      freePreview: lessonFormState.freePreview,
+      required: lessonFormState.required,
+      videoKey: finalVideoKey,
+      quizQuestions: lessonFormState.lessonType === 'QUIZ' ? lessonFormState.quizQuestions : undefined,
+    };
+
+    try {
+      if (lessonModalMode === 'create') {
+        const created = await addCourseLesson(currentSectionForLesson.id, payload);
+        setSections(
+          sections.map((s) => {
+            if (s.id === currentSectionForLesson.id) {
+              return {
+                ...s,
+                lessons: [...(s.lessons || []), { ...created, quizQuestions: payload.quizQuestions }],
+              };
+            }
+            return s;
+          })
+        );
+        if (onShowToast) onShowToast('Lesson created successfully!');
+      } else if (editingLessonId) {
+        const updated = await updateCourseLesson(editingLessonId, payload);
+        setSections(
+          sections.map((s) => {
+            if (s.id === currentSectionForLesson.id) {
+              return {
+                ...s,
+                lessons: (s.lessons || []).map((l: any) =>
+                  l.id === editingLessonId ? { ...l, ...updated, quizQuestions: payload.quizQuestions } : l
+                ),
+              };
+            }
+            return s;
+          })
+        );
+        if (onShowToast) onShowToast('Lesson updated successfully!');
+      }
+
+      setLessonModalOpen(false);
+    } catch (err: any) {
+      console.error(err);
+      alert('Failed to save lesson: ' + (err?.response?.data?.error || err.message));
+    }
+  };
+
+
+
 
   // Form State
   const [title, setTitle] = useState('');
@@ -1221,33 +1798,39 @@ export const AdminAddCoursePage: React.FC<AdminAddCoursePageProps> = ({
         </div>
       </div>
 
+      
       {/* Course Content Builder (Sections & Lessons) */}
       <div className="bg-white border border-slate-200 rounded-2xl p-6 sm:p-8 shadow-xs space-y-6">
-        {/* Header & Course Summary */}
+        {/* Header & Course Summary Actions */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
             <h2 className="text-base font-bold text-slate-900 flex items-center gap-2">
               <Layers className="w-4 h-4 text-green-600" />
-              3. Curriculum & Content Builder
+              3. Curriculum &amp; Content Builder
             </h2>
             <p className="text-xs text-slate-500 mt-0.5">
               Organize course into modules and lessons (Video, Text, PDF, Quiz, Assignment)
             </p>
           </div>
 
-          <button
-            type="button"
-            onClick={() => {
-              if (!savedCourseId) {
-                handleSaveDraft();
-              }
-              setIsAddingSection(true);
-            }}
-            className="flex items-center gap-1.5 px-3.5 py-2 bg-green-50 hover:bg-green-100 text-green-700 text-xs font-semibold rounded-xl border border-green-200 transition-colors cursor-pointer self-start sm:self-auto shadow-2xs"
-          >
-            <FolderPlus className="w-4 h-4" />
-            <span>+ Add Module / Section</span>
-          </button>
+          {/* + Add Module / Section Button */}
+            <button
+              type="button"
+              onClick={() => {
+                if (!savedCourseId) {
+                  handleSaveDraft();
+                }
+                setNewSectionTitle('');
+                setNewSectionDesc('');
+                setSectionStatus('PUBLISHED');
+                setSectionIsFreePreview(false);
+                setIsAddingSection(true);
+              }}
+              className="flex items-center gap-1.5 px-3.5 py-2 bg-green-50 hover:bg-green-100 text-green-700 text-xs font-semibold rounded-xl border border-green-200 transition-colors cursor-pointer shadow-2xs"
+            >
+              <FolderPlus className="w-4 h-4" />
+              <span>+ Add Module / Section</span>
+            </button>
         </div>
 
         {/* Top Curriculum Statistics Banner */}
@@ -1258,7 +1841,7 @@ export const AdminAddCoursePage: React.FC<AdminAddCoursePageProps> = ({
                 <Layers className="w-5 h-5" />
               </div>
               <div>
-                <h3 className="text-sm font-bold text-white tracking-wide">Course Curriculum Summary</h3>
+                <h3 className="text-sm font-bold text-white tracking-wide">Curriculum Overview</h3>
                 <p className="text-xs text-slate-300 mt-0.5 flex flex-wrap items-center gap-2">
                   <span><strong>{courseStats.modulesCount}</strong> {courseStats.modulesCount === 1 ? 'Module' : 'Modules'}</span>
                   <span className="text-slate-500">•</span>
@@ -1297,6 +1880,10 @@ export const AdminAddCoursePage: React.FC<AdminAddCoursePageProps> = ({
                   if (!savedCourseId) {
                     handleSaveDraft();
                   }
+                  setNewSectionTitle('');
+                  setNewSectionDesc('');
+                  setSectionStatus('PUBLISHED');
+                  setSectionIsFreePreview(false);
                   setIsAddingSection(true);
                 }}
                 className="inline-flex items-center gap-1.5 px-4 py-2 bg-green-600 hover:bg-green-700 text-white text-xs font-bold rounded-xl shadow-xs transition-colors cursor-pointer"
@@ -1310,21 +1897,34 @@ export const AdminAddCoursePage: React.FC<AdminAddCoursePageProps> = ({
               const moduleVideoSeconds = calculateSectionVideoDuration(sec);
               const digitalModuleDuration = formatDurationDigital(moduleVideoSeconds);
               const humanModuleDuration = formatDurationHuman(moduleVideoSeconds);
+              const isExpanded = expandedSections[sec.id] !== false;
 
               return (
                 <div
                   key={sec.id}
+                  draggable={true}
+                  onDragStart={() => handleSectionDragStart(secIdx)}
+                  onDragOver={handleSectionDragOver}
+                  onDrop={() => handleSectionDrop(secIdx)}
                   className="bg-slate-50 border border-slate-200 rounded-2xl p-4 sm:p-6 space-y-4 shadow-2xs transition-all hover:border-slate-300"
                 >
                   {/* Module / Section Header */}
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-200/80 pb-3.5">
                     <div className="flex items-center gap-3">
+                      <div className="cursor-grab active:cursor-grabbing text-slate-400 hover:text-slate-600 p-1" title="Drag to reorder module">
+                        <GripVertical className="w-4 h-4" />
+                      </div>
                       <span className="w-7 h-7 rounded-lg bg-green-600 text-white font-bold text-xs flex items-center justify-center shrink-0 shadow-2xs">
                         {secIdx + 1}
                       </span>
                       <div>
-                        <div className="text-[11px] font-bold uppercase tracking-wider text-green-800">
-                          Module {secIdx + 1}
+                        <div className="flex items-center gap-2">
+                          <span className="text-[11px] font-bold uppercase tracking-wider text-green-800">
+                            Module {secIdx + 1}
+                          </span>
+                          <span className="text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider bg-emerald-100 text-emerald-800 border border-emerald-200">
+                            Published
+                          </span>
                         </div>
                         <h3 className="text-sm sm:text-base font-bold text-slate-900">{sec.title}</h3>
                         {sec.description && (
@@ -1334,6 +1934,11 @@ export const AdminAddCoursePage: React.FC<AdminAddCoursePageProps> = ({
                     </div>
 
                     <div className="flex items-center flex-wrap gap-1.5 self-end sm:self-auto">
+                      {/* Duration & Lesson stats */}
+                      <span className="text-xs text-slate-500 font-semibold px-2.5 py-1 bg-white rounded-lg border border-slate-200 shadow-2xs">
+                        {sec.lessons?.length || 0} Lessons • {humanModuleDuration}
+                      </span>
+
                       {/* Reorder Section Up */}
                       <button
                         type="button"
@@ -1366,43 +1971,14 @@ export const AdminAddCoursePage: React.FC<AdminAddCoursePageProps> = ({
                         <Edit2 className="w-3.5 h-3.5" />
                       </button>
 
-                      {/* Primary Green Action: + Add Video Lesson */}
+                      {/* + Add Lesson Button */}
                       <button
                         type="button"
-                        onClick={() => {
-                          setActiveSectionForVideoLesson(sec);
-                          setVideoLessonForm({
-                            title: '',
-                            file: null,
-                            fileName: '',
-                            videoUrl: '',
-                            duration: '00:00',
-                            durationSeconds: 0,
-                            detectedDurationFormatted: '',
-                            uploadPercent: 0,
-                            uploadStatus: 'idle',
-                            errorMessage: null,
-                            freePreview: false,
-                            required: true,
-                          });
-                        }}
-                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-green-600 hover:bg-green-700 text-white text-xs font-bold shadow-xs transition-colors cursor-pointer"
+                        onClick={() => handleOpenAddLessonModal(sec)}
+                        className="flex items-center gap-1 px-3 py-1.5 rounded-xl bg-green-600 hover:bg-green-700 text-white text-xs font-bold shadow-xs transition-colors cursor-pointer"
                       >
-                        <Video className="w-3.5 h-3.5" />
-                        <span>+ Add Video Lesson</span>
-                      </button>
-
-                      {/* Secondary: Other Content Types */}
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setActiveSectionForLesson(sec);
-                        }}
-                        className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-white hover:bg-slate-100 text-slate-700 text-xs font-semibold border border-slate-200 transition-colors cursor-pointer"
-                        title="Add PDF, Quiz, Text, or Assignment"
-                      >
-                        <Plus className="w-3.5 h-3.5 text-slate-500" />
-                        <span>Other Lesson</span>
+                        <Plus className="w-3.5 h-3.5" />
+                        <span>Add Lesson</span>
                       </button>
 
                       {/* Delete Section */}
@@ -1414,149 +1990,153 @@ export const AdminAddCoursePage: React.FC<AdminAddCoursePageProps> = ({
                       >
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>
+
+                      {/* Expand / Collapse Chevron */}
+                      <button
+                        type="button"
+                        onClick={() => toggleSectionExpand(sec.id)}
+                        className="p-1.5 text-slate-400 hover:text-slate-700 transition-colors cursor-pointer"
+                        title={isExpanded ? 'Collapse Module' : 'Expand Module'}
+                      >
+                        {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                      </button>
                     </div>
                   </div>
 
-                  {/* Lessons List in Section */}
-                  <div className="space-y-2.5">
-                    {!sec.lessons || sec.lessons.length === 0 ? (
-                      <div className="py-8 text-center text-xs text-slate-400 border border-dashed border-slate-200 rounded-xl space-y-2 bg-white">
-                        <p className="font-semibold text-slate-600">No lessons added yet.</p>
-                        <p className="text-[11px] text-slate-400">Click below to upload the first video lesson for this module.</p>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setActiveSectionForVideoLesson(sec);
-                            setVideoLessonForm({
-                              title: '',
-                              file: null,
-                              fileName: '',
-                              videoUrl: '',
-                              duration: '00:00',
-                              durationSeconds: 0,
-                              detectedDurationFormatted: '',
-                              uploadPercent: 0,
-                              uploadStatus: 'idle',
-                              errorMessage: null,
-                              freePreview: false,
-                              required: true,
-                            });
-                          }}
-                          className="inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-green-600 hover:bg-green-700 text-white rounded-lg text-xs font-bold shadow-2xs transition-colors cursor-pointer mt-1"
-                        >
-                          <Video className="w-3.5 h-3.5" />
-                          <span>+ Add Video Lesson</span>
-                        </button>
-                      </div>
-                    ) : (
-                      sec.lessons.map((les: any, lesIdx: number) => {
-                        const displayDuration = les.duration || (les.durationSeconds ? formatDurationMMSS(les.durationSeconds) : '00:00');
-
-                        return (
-                          <div
-                            key={les.id}
-                            className="flex flex-col sm:flex-row sm:items-center justify-between p-3 sm:px-4 bg-white border border-slate-200 rounded-xl text-xs hover:border-green-300 transition-all shadow-xs gap-3"
+                  {/* Lessons List in Section (if expanded) */}
+                  {isExpanded && (
+                    <div className="space-y-2.5">
+                      {!sec.lessons || sec.lessons.length === 0 ? (
+                        <div className="py-8 text-center text-xs text-slate-400 border border-dashed border-slate-200 rounded-xl space-y-2 bg-white">
+                          <p className="font-semibold text-slate-600">No lessons added yet.</p>
+                          <p className="text-[11px] text-slate-400">Click below to create video, text, PDF, quiz, or assignment lessons.</p>
+                          <button
+                            type="button"
+                            onClick={() => handleOpenAddLessonModal(sec)}
+                            className="inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-green-600 hover:bg-green-700 text-white rounded-lg text-xs font-bold shadow-2xs transition-colors cursor-pointer mt-1"
                           >
-                            {/* Lesson Number, Icon & Title */}
-                            <div className="flex items-center gap-2.5 min-w-0 flex-1">
-                              <span className="text-slate-400 font-bold shrink-0 text-xs">
-                                Lesson {lesIdx + 1}
-                              </span>
+                            <Plus className="w-3.5 h-3.5" />
+                            <span>+ Add Lesson</span>
+                          </button>
+                        </div>
+                      ) : (
+                        sec.lessons.map((les: any, lesIdx: number) => {
+                          const displayDuration = les.duration || (les.durationSeconds ? formatDurationMMSS(les.durationSeconds) : '10:00');
 
-                              {les.lessonType === 'VIDEO' ? (
-                                <div className="w-6 h-6 rounded-lg bg-green-100 text-green-700 flex items-center justify-center shrink-0">
-                                  <Video className="w-3.5 h-3.5" />
+                          return (
+                            <div
+                              key={les.id}
+                              draggable={true}
+                              onDragStart={() => handleLessonDragStart(sec.id, lesIdx)}
+                              onDragOver={handleLessonDragOver}
+                              onDrop={() => handleLessonDrop(sec.id, lesIdx)}
+                              className="flex flex-col sm:flex-row sm:items-center justify-between p-3 sm:px-4 bg-white border border-slate-200 rounded-xl text-xs hover:border-green-300 transition-all shadow-xs gap-3"
+                            >
+                              {/* Lesson Number, Icon & Title */}
+                              <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                                <div className="cursor-grab active:cursor-grabbing text-slate-300 hover:text-slate-500 shrink-0" title="Drag to reorder lesson">
+                                  <GripVertical className="w-3.5 h-3.5" />
                                 </div>
-                              ) : les.lessonType === 'QUIZ' ? (
-                                <div className="w-6 h-6 rounded-lg bg-purple-100 text-purple-700 flex items-center justify-center shrink-0">
-                                  <HelpCircle className="w-3.5 h-3.5" />
-                                </div>
-                              ) : les.lessonType === 'PDF' ? (
-                                <div className="w-6 h-6 rounded-lg bg-sky-100 text-sky-700 flex items-center justify-center shrink-0">
-                                  <FileCheck className="w-3.5 h-3.5" />
-                                </div>
-                              ) : les.lessonType === 'ASSIGNMENT' ? (
-                                <div className="w-6 h-6 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0">
-                                  <Code className="w-3.5 h-3.5" />
-                                </div>
-                              ) : (
-                                <div className="w-6 h-6 rounded-lg bg-amber-100 text-amber-700 flex items-center justify-center shrink-0">
-                                  <FileText className="w-3.5 h-3.5" />
-                                </div>
-                              )}
-
-                              <div className="min-w-0 flex items-center gap-2 flex-wrap">
-                                <span className="font-semibold text-slate-900 truncate">
-                                  {les.title}
+                                <span className="text-slate-400 font-bold shrink-0 text-xs">
+                                  Lesson {lesIdx + 1}
                                 </span>
-                                {les.freePreview && (
-                                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-green-100 text-green-800 border border-green-200 uppercase font-bold shrink-0">
-                                    Free Preview
-                                  </span>
+
+                                {les.lessonType === 'VIDEO' ? (
+                                  <div className="w-6 h-6 rounded-lg bg-green-100 text-green-700 flex items-center justify-center shrink-0">
+                                    <Video className="w-3.5 h-3.5" />
+                                  </div>
+                                ) : les.lessonType === 'QUIZ' ? (
+                                  <div className="w-6 h-6 rounded-lg bg-purple-100 text-purple-700 flex items-center justify-center shrink-0">
+                                    <HelpCircle className="w-3.5 h-3.5" />
+                                  </div>
+                                ) : les.lessonType === 'PDF' ? (
+                                  <div className="w-6 h-6 rounded-lg bg-sky-100 text-sky-700 flex items-center justify-center shrink-0">
+                                    <FileCheck className="w-3.5 h-3.5" />
+                                  </div>
+                                ) : les.lessonType === 'ASSIGNMENT' ? (
+                                  <div className="w-6 h-6 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0">
+                                    <Award className="w-3.5 h-3.5" />
+                                  </div>
+                                ) : (
+                                  <div className="w-6 h-6 rounded-lg bg-amber-100 text-amber-700 flex items-center justify-center shrink-0">
+                                    <FileText className="w-3.5 h-3.5" />
+                                  </div>
                                 )}
+
+                                <div className="min-w-0 flex items-center gap-2 flex-wrap">
+                                  <span className="font-semibold text-slate-900 truncate">
+                                    {les.title}
+                                  </span>
+                                  <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 uppercase shrink-0">
+                                    {les.lessonType || 'VIDEO'}
+                                  </span>
+                                  {les.freePreview && (
+                                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-green-100 text-green-800 border border-green-200 uppercase font-bold shrink-0">
+                                      Free Preview
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+
+                              {/* Duration & Actions */}
+                              <div className="flex items-center justify-between sm:justify-end gap-3 shrink-0 pt-2 sm:pt-0 border-t sm:border-t-0 border-slate-100">
+                                <div className="flex items-center gap-1.5 font-mono text-xs font-bold text-slate-700 bg-slate-50 px-2.5 py-1 rounded-lg border border-slate-200 shadow-2xs">
+                                  <Clock className="w-3 h-3 text-slate-400" />
+                                  <span>{displayDuration}</span>
+                                </div>
+
+                                <div className="flex items-center gap-1">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleMoveLesson(sec.id, lesIdx, 'up')}
+                                    disabled={lesIdx === 0}
+                                    className="p-1.5 text-slate-400 hover:text-slate-700 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                                    title="Move Lesson Up"
+                                  >
+                                    <ChevronUp className="w-3.5 h-3.5" />
+                                  </button>
+
+                                  <button
+                                    type="button"
+                                    onClick={() => handleMoveLesson(sec.id, lesIdx, 'down')}
+                                    disabled={lesIdx === (sec.lessons?.length || 1) - 1}
+                                    className="p-1.5 text-slate-400 hover:text-slate-700 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                                    title="Move Lesson Down"
+                                  >
+                                    <ChevronDown className="w-3.5 h-3.5" />
+                                  </button>
+
+                                  <button
+                                    type="button"
+                                    onClick={() => handleOpenEditLessonModal(sec, les)}
+                                    className="p-1.5 text-slate-400 hover:text-green-700 transition-colors cursor-pointer"
+                                    title="Edit Lesson"
+                                  >
+                                    <Edit2 className="w-3.5 h-3.5" />
+                                  </button>
+
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDeleteLesson(sec.id, les.id)}
+                                    className="p-1.5 text-slate-400 hover:text-rose-600 transition-colors cursor-pointer"
+                                    title="Delete Lesson"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
+                                </div>
                               </div>
                             </div>
-
-                            {/* Duration & Actions */}
-                            <div className="flex items-center justify-between sm:justify-end gap-3 shrink-0 pt-2 sm:pt-0 border-t sm:border-t-0 border-slate-100">
-                              {/* Video Duration */}
-                              <div className="flex items-center gap-1.5 font-mono text-xs font-bold text-slate-700 bg-slate-50 px-2.5 py-1 rounded-lg border border-slate-200 shadow-2xs">
-                                <Clock className="w-3 h-3 text-slate-400" />
-                                <span>{displayDuration}</span>
-                              </div>
-
-                              {/* Ordering & Management Buttons */}
-                              <div className="flex items-center gap-1">
-                                <button
-                                  type="button"
-                                  onClick={() => handleMoveLesson(sec.id, lesIdx, 'up')}
-                                  disabled={lesIdx === 0}
-                                  className="p-1.5 text-slate-400 hover:text-slate-700 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-                                  title="Move Lesson Up"
-                                >
-                                  <ChevronUp className="w-3.5 h-3.5" />
-                                </button>
-
-                                <button
-                                  type="button"
-                                  onClick={() => handleMoveLesson(sec.id, lesIdx, 'down')}
-                                  disabled={lesIdx === (sec.lessons?.length || 1) - 1}
-                                  className="p-1.5 text-slate-400 hover:text-slate-700 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-                                  title="Move Lesson Down"
-                                >
-                                  <ChevronDown className="w-3.5 h-3.5" />
-                                </button>
-
-                                <button
-                                  type="button"
-                                  onClick={() => handleOpenEditLesson(sec.id, les)}
-                                  className="p-1.5 text-slate-400 hover:text-green-700 transition-colors cursor-pointer"
-                                  title="Edit Lesson"
-                                >
-                                  <Edit2 className="w-3.5 h-3.5" />
-                                </button>
-
-                                <button
-                                  type="button"
-                                  onClick={() => handleDeleteLesson(sec.id, les.id)}
-                                  className="p-1.5 text-slate-400 hover:text-rose-600 transition-colors cursor-pointer"
-                                  title="Delete Lesson"
-                                >
-                                  <Trash2 className="w-3.5 h-3.5" />
-                                </button>
-                              </div>
-                            </div>
-                          </div>
-                        );
-                      })
-                    )}
-                  </div>
+                          );
+                        })
+                      )}
+                    </div>
+                  )}
 
                   {/* Module Footer: Total Duration & Add Lesson */}
-                  {sec.lessons && sec.lessons.length > 0 && (
+                  {sec.lessons && sec.lessons.length > 0 && isExpanded && (
                     <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 pt-3 border-t border-slate-200/80 text-xs text-slate-600">
                       <div className="flex items-center gap-2">
-                        <span className="font-semibold text-slate-700">Total video duration:</span>
+                        <span className="font-semibold text-slate-700">Total module duration:</span>
                         <span className="font-mono font-bold text-slate-900 bg-white px-2 py-0.5 rounded-md border border-slate-200 shadow-2xs">
                           {digitalModuleDuration}
                         </span>
@@ -1567,27 +2147,11 @@ export const AdminAddCoursePage: React.FC<AdminAddCoursePageProps> = ({
 
                       <button
                         type="button"
-                        onClick={() => {
-                          setActiveSectionForVideoLesson(sec);
-                          setVideoLessonForm({
-                            title: '',
-                            file: null,
-                            fileName: '',
-                            videoUrl: '',
-                            duration: '00:00',
-                            durationSeconds: 0,
-                            detectedDurationFormatted: '',
-                            uploadPercent: 0,
-                            uploadStatus: 'idle',
-                            errorMessage: null,
-                            freePreview: false,
-                            required: true,
-                          });
-                        }}
+                        onClick={() => handleOpenAddLessonModal(sec)}
                         className="inline-flex items-center gap-1.5 text-green-700 hover:text-green-800 font-bold cursor-pointer text-xs"
                       >
                         <Plus className="w-3.5 h-3.5" />
-                        <span>Add Video Lesson</span>
+                        <span>+ Add Lesson</span>
                       </button>
                     </div>
                   )}
@@ -1602,31 +2166,58 @@ export const AdminAddCoursePage: React.FC<AdminAddCoursePageProps> = ({
       {isAddingSection && (
         <div className="fixed inset-0 bg-slate-950/50 backdrop-blur-xs flex items-center justify-center p-4 z-50">
           <div className="bg-white border border-slate-200 rounded-2xl p-6 max-w-md w-full space-y-4 shadow-xl">
-            <h3 className="text-base font-bold text-slate-900">Add Curriculum Module / Section</h3>
+            <h3 className="text-base font-bold text-slate-900">Add Module / Section</h3>
             <div className="space-y-3">
               <div>
-                <label className="text-xs font-semibold text-slate-700">Section Title *</label>
+                <label className="text-xs font-semibold text-slate-700">Module Title *</label>
                 <input
                   type="text"
                   value={newSectionTitle}
                   onChange={(e) => setNewSectionTitle(e.target.value)}
-                  placeholder="e.g. Module 1: Architecture & System Setup"
+                  placeholder="e.g. Module 1 — Introduction to Python"
                   className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-green-500/20 focus:border-green-600 mt-1 transition"
                 />
               </div>
+
               <div>
                 <label className="text-xs font-semibold text-slate-700">Module Description</label>
-                <input
-                  type="text"
+                <textarea
+                  rows={2}
                   value={newSectionDesc}
                   onChange={(e) => setNewSectionDesc(e.target.value)}
-                  placeholder="Brief objectives of this module"
+                  placeholder="Objectives and summary of this module..."
                   className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-green-500/20 focus:border-green-600 mt-1 transition"
                 />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3 pt-1">
+                <div>
+                  <label className="text-xs font-semibold text-slate-700">Status</label>
+                  <select
+                    value={sectionStatus}
+                    onChange={(e: any) => setSectionStatus(e.target.value)}
+                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 mt-1"
+                  >
+                    <option value="PUBLISHED">Published</option>
+                    <option value="DRAFT">Draft</option>
+                  </select>
+                </div>
+
+                <div className="flex items-center pt-5">
+                  <label className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={sectionIsFreePreview}
+                      onChange={(e) => setSectionIsFreePreview(e.target.checked)}
+                      className="w-4 h-4 rounded text-green-600 focus:ring-green-500 border-slate-300"
+                    />
+                    <span>Free Preview Module</span>
+                  </label>
+                </div>
               </div>
             </div>
 
-            <div className="flex justify-end gap-2 pt-2">
+            <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
               <button
                 type="button"
                 onClick={() => setIsAddingSection(false)}
@@ -1646,313 +2237,6 @@ export const AdminAddCoursePage: React.FC<AdminAddCoursePageProps> = ({
         </div>
       )}
 
-      {/* Modal: Dedicated Add Video Lesson */}
-      {activeSectionForVideoLesson && (
-        <div className="fixed inset-0 bg-slate-950/50 backdrop-blur-xs flex items-center justify-center p-4 z-50">
-          <div className="bg-white border border-slate-200 rounded-2xl p-6 max-w-lg w-full space-y-4 shadow-xl max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-              <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-lg bg-green-100 text-green-700 flex items-center justify-center font-bold">
-                  <Video className="w-4 h-4" />
-                </div>
-                <div>
-                  <h3 className="text-base font-bold text-slate-900">Add Video Lesson</h3>
-                  <p className="text-xs text-slate-500">Module: {activeSectionForVideoLesson.title}</p>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setActiveSectionForVideoLesson(null)}
-                className="text-slate-400 hover:text-slate-600 p-1 rounded-lg"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <div className="space-y-4">
-              {/* Lesson Title */}
-              <div>
-                <label className="text-xs font-semibold text-slate-700 block mb-1">
-                  Lesson Title *
-                </label>
-                <input
-                  type="text"
-                  value={videoLessonForm.title}
-                  onChange={(e) =>
-                    setVideoLessonForm((prev) => ({ ...prev, title: e.target.value }))
-                  }
-                  placeholder="e.g. Introduction to Deep Learning"
-                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-green-500/20 focus:border-green-600 transition"
-                />
-              </div>
-
-              {/* Video Upload Area */}
-              <div>
-                <label className="text-xs font-semibold text-slate-700 block mb-1">
-                  Video *
-                </label>
-                <div className="border-2 border-dashed border-slate-200 hover:border-green-400 rounded-2xl p-5 text-center bg-slate-50/50 transition-colors">
-                  <input
-                    type="file"
-                    id="video-lesson-file-input"
-                    accept="video/mp4,video/webm,video/quicktime,video/x-matroska,.mp4,.webm,.mov,.mkv"
-                    onChange={handleVideoFileSelect}
-                    className="hidden"
-                  />
-                  <label
-                    htmlFor="video-lesson-file-input"
-                    className="cursor-pointer flex flex-col items-center justify-center gap-2"
-                  >
-                    <div className="w-12 h-12 rounded-full bg-green-50 text-green-600 flex items-center justify-center">
-                      <Upload className="w-6 h-6" />
-                    </div>
-                    <div>
-                      <p className="text-xs font-bold text-slate-800">
-                        {videoLessonForm.fileName ? 'Change Selected Video' : 'Upload Video'}
-                      </p>
-                      <p className="text-[11px] text-slate-400 mt-0.5">
-                        Supported video formats: MP4 / WebM / MOV
-                      </p>
-                    </div>
-                  </label>
-                </div>
-
-                {/* Detected Duration & File Info */}
-                {videoLessonForm.fileName && (
-                  <div className="mt-3 p-3 bg-green-50/80 border border-green-200 rounded-xl space-y-2">
-                    <div className="flex items-center justify-between text-xs">
-                      <span className="font-semibold text-slate-700">Uploaded Video:</span>
-                      <span className="font-medium text-slate-900 truncate max-w-[200px]">
-                        {videoLessonForm.fileName}
-                      </span>
-                    </div>
-                    <div className="flex items-center justify-between text-xs pt-1 border-t border-green-200/60">
-                      <span className="font-semibold text-green-900 flex items-center gap-1.5">
-                        <Sparkles className="w-3.5 h-3.5 text-green-600" />
-                        Detected Duration:
-                      </span>
-                      <span className="font-mono font-bold text-green-800 bg-white px-2 py-0.5 rounded border border-green-300">
-                        {videoLessonForm.detectedDurationFormatted || (videoLessonForm.uploadStatus === 'detecting' ? 'Detecting...' : '00:00')}
-                      </span>
-                    </div>
-                  </div>
-                )}
-
-                {/* Upload Progress Bar */}
-                {videoLessonForm.uploadStatus === 'uploading' && (
-                  <div className="mt-3 space-y-1">
-                    <div className="flex justify-between text-xs font-semibold text-slate-700">
-                      <span>Uploading...</span>
-                      <span>{videoLessonForm.uploadPercent}%</span>
-                    </div>
-                    <div className="w-full bg-slate-200 rounded-full h-2 overflow-hidden">
-                      <div
-                        className="bg-green-600 h-2 rounded-full transition-all duration-300"
-                        style={{ width: `${videoLessonForm.uploadPercent}%` }}
-                      />
-                    </div>
-                  </div>
-                )}
-
-                {videoLessonForm.errorMessage && (
-                  <p className="text-xs text-rose-600 mt-2 flex items-center gap-1 font-medium">
-                    <AlertCircle className="w-4 h-4" />
-                    {videoLessonForm.errorMessage}
-                  </p>
-                )}
-              </div>
-
-              {/* Toggles */}
-              <div className="flex items-center justify-between pt-2 border-t border-slate-100">
-                <label className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={videoLessonForm.freePreview}
-                    onChange={(e) =>
-                      setVideoLessonForm((prev) => ({ ...prev, freePreview: e.target.checked }))
-                    }
-                    className="w-4 h-4 rounded text-green-600 focus:ring-green-500 border-slate-300"
-                  />
-                  <span>Mark as Free Preview</span>
-                </label>
-
-                <label className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={videoLessonForm.required}
-                    onChange={(e) =>
-                      setVideoLessonForm((prev) => ({ ...prev, required: e.target.checked }))
-                    }
-                    className="w-4 h-4 rounded text-green-600 focus:ring-green-500 border-slate-300"
-                  />
-                  <span>Required for Completion</span>
-                </label>
-              </div>
-            </div>
-
-            <div className="flex justify-end gap-2 pt-4 border-t border-slate-100">
-              <button
-                type="button"
-                onClick={() => setActiveSectionForVideoLesson(null)}
-                className="px-4 py-2 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 rounded-xl text-xs font-semibold cursor-pointer transition"
-                disabled={videoLessonForm.uploadStatus === 'uploading'}
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={handleUploadAndCreateVideoLesson}
-                disabled={videoLessonForm.uploadStatus === 'uploading'}
-                className="flex items-center gap-1.5 px-4 py-2 bg-green-600 hover:bg-green-700 text-white font-bold rounded-xl text-xs cursor-pointer shadow-xs transition disabled:opacity-50"
-              >
-                {videoLessonForm.uploadStatus === 'uploading' ? (
-                  <>
-                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                    <span>Uploading & Creating...</span>
-                  </>
-                ) : (
-                  <>
-                    <Upload className="w-3.5 h-3.5" />
-                    <span>Upload & Create Lesson</span>
-                  </>
-                )}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Modal: Add Other Lesson (Text, PDF, Quiz, Assignment) */}
-      {activeSectionForLesson && (
-        <div className="fixed inset-0 bg-slate-950/50 backdrop-blur-xs flex items-center justify-center p-4 z-50">
-          <div className="bg-white border border-slate-200 rounded-2xl p-6 max-w-lg w-full space-y-4 shadow-xl max-h-[90vh] overflow-y-auto">
-            <h3 className="text-base font-bold text-slate-900">
-              Add Lesson to {activeSectionForLesson.title}
-            </h3>
-
-            <div className="space-y-3">
-              <div>
-                <label className="text-xs font-semibold text-slate-700">Lesson Title *</label>
-                <input
-                  type="text"
-                  value={lessonForm.title}
-                  onChange={(e) => setLessonForm({ ...lessonForm, title: e.target.value })}
-                  placeholder="e.g. Microservices Architecture Documentation"
-                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-green-500/20 focus:border-green-600 mt-1 transition"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-xs font-semibold text-slate-700">Lesson Type</label>
-                  <select
-                    value={lessonForm.lessonType}
-                    onChange={(e) => setLessonForm({ ...lessonForm, lessonType: e.target.value })}
-                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-green-500/20 focus:border-green-600 mt-1 transition"
-                  >
-                    <option value="VIDEO">VIDEO</option>
-                    <option value="TEXT">TEXT</option>
-                    <option value="PDF">PDF / DOCUMENT</option>
-                    <option value="QUIZ">QUIZ</option>
-                    <option value="ASSIGNMENT">ASSIGNMENT</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="text-xs font-semibold text-slate-700">Duration (e.g. 15m)</label>
-                  <input
-                    type="text"
-                    value={lessonForm.duration}
-                    onChange={(e) => setLessonForm({ ...lessonForm, duration: e.target.value })}
-                    placeholder="15m"
-                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-green-500/20 focus:border-green-600 mt-1 transition"
-                  />
-                </div>
-              </div>
-
-              {/* Content URL */}
-              <div>
-                <label className="text-xs font-semibold text-slate-700">Content / Document URL</label>
-                <div className="flex gap-2 mt-1">
-                  <input
-                    type="text"
-                    value={lessonForm.contentUrl}
-                    onChange={(e) => setLessonForm({ ...lessonForm, contentUrl: e.target.value })}
-                    placeholder="https://... or upload PDF"
-                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-green-500/20 focus:border-green-600 transition"
-                  />
-                  <label className="px-3.5 py-2.5 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 rounded-xl text-xs font-semibold cursor-pointer shrink-0 flex items-center gap-1.5 transition">
-                    <Upload className="w-3.5 h-3.5 text-slate-500" />
-                    <span>Upload</span>
-                    <input
-                      type="file"
-                      accept="application/pdf,video/*"
-                      onChange={(e) => handleFileUpload(e, 'lessonVideo')}
-                      className="hidden"
-                    />
-                  </label>
-                </div>
-                {uploadProgress && (
-                  <p className="text-[11px] text-green-600 mt-1 animate-pulse">{uploadProgress}</p>
-                )}
-              </div>
-
-              <div>
-                <label className="text-xs font-semibold text-slate-700">Description / Summary</label>
-                <textarea
-                  rows={2}
-                  value={lessonForm.description}
-                  onChange={(e) => setLessonForm({ ...lessonForm, description: e.target.value })}
-                  placeholder="Key topics covered in this lesson..."
-                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-green-500/20 focus:border-green-600 mt-1 transition"
-                />
-              </div>
-
-              <div className="flex items-center justify-between pt-2">
-                <label className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={lessonForm.freePreview}
-                    onChange={(e) =>
-                      setLessonForm({ ...lessonForm, freePreview: e.target.checked })
-                    }
-                    className="w-4 h-4 rounded text-green-600 focus:ring-green-500 border-slate-300"
-                  />
-                  <span>Mark as Free Preview</span>
-                </label>
-
-                <label className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={lessonForm.required}
-                    onChange={(e) => setLessonForm({ ...lessonForm, required: e.target.checked })}
-                    className="w-4 h-4 rounded text-green-600 focus:ring-green-500 border-slate-300"
-                  />
-                  <span>Required for Completion</span>
-                </label>
-              </div>
-            </div>
-
-            <div className="flex justify-end gap-2 pt-4 border-t border-slate-200">
-              <button
-                type="button"
-                onClick={() => setActiveSectionForLesson(null)}
-                className="px-4 py-2 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 rounded-xl text-xs font-semibold cursor-pointer transition"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={handleAddLesson}
-                className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white font-bold rounded-xl text-xs cursor-pointer shadow-xs transition"
-              >
-                Save Lesson
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* Modal: Edit Section */}
       {editingSection && (
         <div className="fixed inset-0 bg-slate-950/50 backdrop-blur-xs flex items-center justify-center p-4 z-50">
@@ -1960,7 +2244,7 @@ export const AdminAddCoursePage: React.FC<AdminAddCoursePageProps> = ({
             <h3 className="text-base font-bold text-slate-900">Edit Module / Section</h3>
             <div className="space-y-3">
               <div>
-                <label className="text-xs font-semibold text-slate-700">Section Title *</label>
+                <label className="text-xs font-semibold text-slate-700">Module Title *</label>
                 <input
                   type="text"
                   value={editSectionTitle}
@@ -1969,10 +2253,11 @@ export const AdminAddCoursePage: React.FC<AdminAddCoursePageProps> = ({
                   className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-green-500/20 focus:border-green-600 mt-1 transition"
                 />
               </div>
+
               <div>
                 <label className="text-xs font-semibold text-slate-700">Module Description</label>
-                <input
-                  type="text"
+                <textarea
+                  rows={2}
                   value={editSectionDesc}
                   onChange={(e) => setEditSectionDesc(e.target.value)}
                   placeholder="Module description"
@@ -1981,7 +2266,7 @@ export const AdminAddCoursePage: React.FC<AdminAddCoursePageProps> = ({
               </div>
             </div>
 
-            <div className="flex justify-end gap-2 pt-2">
+            <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
               <button
                 type="button"
                 onClick={() => setEditingSection(null)}
@@ -2001,136 +2286,896 @@ export const AdminAddCoursePage: React.FC<AdminAddCoursePageProps> = ({
         </div>
       )}
 
-      {/* Modal: Edit Lesson */}
-      {editingLesson && (
-        <div className="fixed inset-0 bg-slate-950/50 backdrop-blur-xs flex items-center justify-center p-4 z-50">
-          <div className="bg-white border border-slate-200 rounded-2xl p-6 max-w-lg w-full space-y-4 shadow-xl max-h-[90vh] overflow-y-auto">
-            <h3 className="text-base font-bold text-slate-900">
-              Edit Lesson
-            </h3>
+      {/* Modal: Comprehensive Add / Edit Lesson Modal */}
+      {lessonModalOpen && (
+        <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 z-50">
+          <div className="bg-white border border-slate-200 rounded-3xl p-5 sm:p-7 max-w-3xl w-full space-y-5 shadow-2xl max-h-[92vh] overflow-y-auto">
+            {/* Header */}
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3.5">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-green-50 text-green-700 border border-green-200 flex items-center justify-center font-bold shrink-0">
+                  {lessonFormState.lessonType === 'VIDEO' ? <Video className="w-5 h-5 text-green-600" /> :
+                   lessonFormState.lessonType === 'QUIZ' ? <HelpCircle className="w-5 h-5 text-purple-600" /> :
+                   lessonFormState.lessonType === 'PDF' ? <FileCheck className="w-5 h-5 text-sky-600" /> :
+                   lessonFormState.lessonType === 'ASSIGNMENT' ? <Award className="w-5 h-5 text-emerald-600" /> :
+                   <FileText className="w-5 h-5 text-amber-600" />}
+                </div>
+                <div>
+                  <h3 className="text-base sm:text-lg font-bold text-slate-900">
+                    {lessonModalMode === 'create' ? 'Add Lesson / Content' : 'Edit Lesson / Content'}
+                  </h3>
+                  <p className="text-xs text-slate-500">
+                    Module: <span className="font-semibold text-slate-700">{currentSectionForLesson?.title}</span>
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setLessonModalOpen(false)}
+                className="text-slate-400 hover:text-slate-600 p-1.5 rounded-xl hover:bg-slate-100 transition"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
 
-            <div className="space-y-3">
-              <div>
-                <label className="text-xs font-semibold text-slate-700">Lesson Title *</label>
+            {/* Basic Lesson Fields */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="sm:col-span-2">
+                <label className="text-xs font-semibold text-slate-700 block mb-1">
+                  Lesson Title *
+                </label>
                 <input
                   type="text"
-                  value={editLessonForm.title}
-                  onChange={(e) => setEditLessonForm({ ...editLessonForm, title: e.target.value })}
-                  placeholder="Lesson title"
-                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-green-500/20 focus:border-green-600 mt-1 transition"
+                  value={lessonFormState.title}
+                  onChange={(e) => setLessonFormState((prev) => ({ ...prev, title: e.target.value }))}
+                  placeholder="e.g. Python Variables and Data Types"
+                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-green-500/20 focus:border-green-600 transition"
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-xs font-semibold text-slate-700">Lesson Type</label>
-                  <select
-                    value={editLessonForm.lessonType}
-                    onChange={(e) => setEditLessonForm({ ...editLessonForm, lessonType: e.target.value })}
-                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-green-500/20 focus:border-green-600 mt-1 transition"
-                  >
-                    <option value="VIDEO">VIDEO</option>
-                    <option value="TEXT">TEXT</option>
-                    <option value="PDF">PDF / DOCUMENT</option>
-                    <option value="QUIZ">QUIZ</option>
-                    <option value="ASSIGNMENT">ASSIGNMENT</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="text-xs font-semibold text-slate-700">Duration (e.g. 15m or 12:34)</label>
-                  <input
-                    type="text"
-                    value={editLessonForm.duration}
-                    onChange={(e) => setEditLessonForm({ ...editLessonForm, duration: e.target.value })}
-                    placeholder="12:34"
-                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-green-500/20 focus:border-green-600 mt-1 transition"
-                  />
-                </div>
-              </div>
-
-              {/* Video upload / URL */}
               <div>
-                <label className="text-xs font-semibold text-slate-700">Content / Video URL (URL or Upload) *</label>
-                <div className="flex gap-2 mt-1">
-                  <input
-                    type="text"
-                    value={editLessonForm.contentUrl}
-                    onChange={(e) => setEditLessonForm({ ...editLessonForm, contentUrl: e.target.value })}
-                    placeholder="https://... or upload file"
-                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-green-500/20 focus:border-green-600 transition"
-                  />
-                  <label className="px-3.5 py-2.5 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 rounded-xl text-xs font-semibold cursor-pointer shrink-0 flex items-center gap-1.5 transition shadow-xs">
-                    <Upload className="w-3.5 h-3.5 text-slate-500" />
-                    <span>Upload</span>
-                    <input
-                      type="file"
-                      accept="video/*,application/pdf"
-                      onChange={(e) => handleFileUpload(e, 'editLessonVideo')}
-                      className="hidden"
-                    />
-                  </label>
-                </div>
-                {uploadProgress && (
-                  <p className="text-[11px] text-green-600 mt-1 animate-pulse">{uploadProgress}</p>
-                )}
+                <label className="text-xs font-semibold text-slate-700 block mb-1">
+                  Content Type *
+                </label>
+                <select
+                  value={lessonFormState.lessonType}
+                  onChange={(e: any) => setLessonFormState((prev) => ({ ...prev, lessonType: e.target.value }))}
+                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-green-500/20 focus:border-green-600 font-semibold"
+                >
+                  <option value="VIDEO">🎥 Video Lesson</option>
+                  <option value="TEXT">📝 Text / Reading Lesson</option>
+                  <option value="PDF">📄 PDF / Document Lesson</option>
+                  <option value="QUIZ">❓ Quiz &amp; Assessment</option>
+                  <option value="ASSIGNMENT">📋 Project / Assignment</option>
+                </select>
               </div>
 
               <div>
-                <label className="text-xs font-semibold text-slate-700">Description / Summary</label>
-                <textarea
-                  rows={2}
-                  value={editLessonForm.description}
-                  onChange={(e) => setEditLessonForm({ ...editLessonForm, description: e.target.value })}
-                  placeholder="Key topics covered..."
-                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-green-500/20 focus:border-green-600 mt-1 transition"
-                />
-              </div>
-
-              <div className="flex items-center justify-between pt-2">
-                <label className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={editLessonForm.freePreview}
-                    onChange={(e) =>
-                      setEditLessonForm({ ...editLessonForm, freePreview: e.target.checked })
-                    }
-                    className="w-4 h-4 rounded text-green-600 focus:ring-green-500 border-slate-300"
-                  />
-                  <span>Mark as Free Preview</span>
+                <label className="text-xs font-semibold text-slate-700 block mb-1">
+                  Status
                 </label>
-
-                <label className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={editLessonForm.required}
-                    onChange={(e) => setEditLessonForm({ ...editLessonForm, required: e.target.checked })}
-                    className="w-4 h-4 rounded text-green-600 focus:ring-green-500 border-slate-300"
-                  />
-                  <span>Required for Completion</span>
-                </label>
+                <select
+                  value={lessonFormState.status}
+                  onChange={(e: any) => setLessonFormState((prev) => ({ ...prev, status: e.target.value }))}
+                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900"
+                >
+                  <option value="PUBLISHED">Published</option>
+                  <option value="DRAFT">Draft</option>
+                </select>
               </div>
             </div>
 
-            <div className="flex justify-end gap-2 pt-4 border-t border-slate-200">
+            {/* Dynamic Content Type Sections */}
+
+            {/* 1. VIDEO CONTENT TYPE */}
+            {lessonFormState.lessonType === 'VIDEO' && (
+              <div className="bg-slate-50/70 border border-slate-200 rounded-2xl p-4 sm:p-5 space-y-4">
+                <div className="flex items-center justify-between border-b border-slate-200 pb-2">
+                  <span className="text-xs font-bold uppercase tracking-wider text-green-800 flex items-center gap-1.5">
+                    <Video className="w-3.5 h-3.5 text-green-600" />
+                    Video Settings &amp; Source
+                  </span>
+
+                  {/* Video Source Radio */}
+                  <div className="flex items-center gap-2 bg-white p-1 rounded-xl border border-slate-200 text-xs">
+                    <button
+                      type="button"
+                      onClick={() => setLessonFormState((prev) => ({ ...prev, videoSource: 'UPLOAD' }))}
+                      className={`px-3 py-1 rounded-lg font-semibold transition ${
+                        lessonFormState.videoSource === 'UPLOAD'
+                          ? 'bg-green-600 text-white shadow-2xs'
+                          : 'text-slate-600 hover:text-slate-900'
+                      }`}
+                    >
+                      Local Upload
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setLessonFormState((prev) => ({ ...prev, videoSource: 'YOUTUBE' }))}
+                      className={`px-3 py-1 rounded-lg font-semibold transition ${
+                        lessonFormState.videoSource === 'YOUTUBE'
+                          ? 'bg-red-600 text-white shadow-2xs'
+                          : 'text-slate-600 hover:text-slate-900'
+                      }`}
+                    >
+                      YouTube URL
+                    </button>
+                  </div>
+                </div>
+
+                {/* Upload Video Section */}
+                {lessonFormState.videoSource === 'UPLOAD' && (
+                  <div className="space-y-3">
+                    <label className="text-xs font-semibold text-slate-700 block">
+                      Upload Video File (MP4, WebM, MOV)
+                    </label>
+
+                    <div className="border-2 border-dashed border-slate-200 hover:border-green-400 rounded-2xl p-5 text-center bg-white transition-colors">
+                      <input
+                        type="file"
+                        id="lesson-video-picker"
+                        accept="video/mp4,video/webm,video/quicktime,video/x-matroska,.mp4,.webm,.mov,.mkv"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (file) handleLessonVideoUpload(file);
+                        }}
+                        className="hidden"
+                      />
+                      <label
+                        htmlFor="lesson-video-picker"
+                        className="cursor-pointer flex flex-col items-center justify-center gap-2"
+                      >
+                        <div className="w-12 h-12 rounded-full bg-green-50 text-green-600 flex items-center justify-center">
+                          <Upload className="w-6 h-6" />
+                        </div>
+                        <div>
+                          <p className="text-xs font-bold text-slate-800">
+                            {lessonFormState.videoFileName ? 'Change Video File' : 'Click to Upload Video'}
+                          </p>
+                          <p className="text-[11px] text-slate-400 mt-0.5">
+                            Files are saved to <span className="font-mono text-slate-500">uploads/video/</span>
+                          </p>
+                        </div>
+                      </label>
+                    </div>
+
+                    {/* Upload progress indicator */}
+                    {lessonFormState.videoUploadStatus === 'uploading' && (
+                      <div className="space-y-1 bg-white p-3 rounded-xl border border-slate-200">
+                        <div className="flex justify-between text-xs font-semibold text-slate-700">
+                          <span>Uploading video...</span>
+                          <span>{lessonFormState.videoUploadPercent}%</span>
+                        </div>
+                        <div className="w-full bg-slate-100 rounded-full h-2 overflow-hidden">
+                          <div
+                            className="bg-green-600 h-2 rounded-full transition-all duration-300"
+                            style={{ width: `${lessonFormState.videoUploadPercent}%` }}
+                          />
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Uploaded state card */}
+                    {lessonFormState.contentUrl && lessonFormState.videoSource === 'UPLOAD' && (
+                      <div className="p-3.5 bg-green-50 border border-green-200 rounded-xl space-y-2.5">
+                        <div className="flex items-center justify-between text-xs">
+                          <div className="flex items-center gap-2">
+                            <CheckCircle2 className="w-4 h-4 text-green-600" />
+                            <span className="font-bold text-green-900">Video uploaded successfully</span>
+                          </div>
+                          <span className="font-mono text-xs text-green-800 font-bold bg-white px-2 py-0.5 rounded border border-green-300">
+                            Duration: {lessonFormState.duration || '00:00'}
+                          </span>
+                        </div>
+
+                        <div className="text-[11px] font-mono text-slate-600 truncate">
+                          {lessonFormState.contentUrl}
+                        </div>
+
+                        <div className="flex items-center gap-2 pt-1">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setLessonFormState((prev) => ({
+                                ...prev,
+                                videoPreviewActive: !prev.videoPreviewActive,
+                              }))
+                            }
+                            className="text-xs font-bold text-green-700 hover:text-green-900 bg-white px-3 py-1 rounded-lg border border-green-300 cursor-pointer shadow-2xs"
+                          >
+                            {lessonFormState.videoPreviewActive ? 'Hide Preview' : 'Preview Video'}
+                          </button>
+                          <label
+                            htmlFor="lesson-video-picker"
+                            className="text-xs font-semibold text-slate-700 hover:text-slate-900 bg-white px-3 py-1 rounded-lg border border-slate-300 cursor-pointer shadow-2xs"
+                          >
+                            Replace Video
+                          </label>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setLessonFormState((prev) => ({
+                                ...prev,
+                                contentUrl: '',
+                                videoFileName: '',
+                                videoUploadStatus: 'idle',
+                                videoPreviewActive: false,
+                              }))
+                            }
+                            className="text-xs font-semibold text-rose-600 hover:text-rose-800 bg-white px-3 py-1 rounded-lg border border-rose-200 cursor-pointer shadow-2xs"
+                          >
+                            Delete Video
+                          </button>
+                        </div>
+
+                        {/* Interactive Player Preview */}
+                        {lessonFormState.videoPreviewActive && (
+                          <div className="pt-2">
+                            <video
+                              src={lessonFormState.contentUrl}
+                              controls
+                              className="w-full aspect-video rounded-xl bg-black object-contain shadow-md"
+                            />
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* YouTube Video Section */}
+                {lessonFormState.videoSource === 'YOUTUBE' && (
+                  <div className="space-y-3">
+                    <div>
+                      <label className="text-xs font-semibold text-slate-700 block mb-1">
+                        YouTube Video URL *
+                      </label>
+                      <div className="flex items-center gap-2">
+                        <div className="relative flex-1">
+                          <Youtube className="w-4 h-4 text-red-600 absolute left-3 top-3 pointer-events-none" />
+                          <input
+                            type="text"
+                            value={lessonFormState.youtubeUrl}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              const ytId = extractYouTubeId(val);
+                              setLessonFormState((prev) => ({
+                                ...prev,
+                                youtubeUrl: val,
+                                youtubeVideoId: ytId || '',
+                                contentUrl: val,
+                              }));
+                            }}
+                            placeholder="https://www.youtube.com/watch?v=XXXXXXXX or https://youtu.be/XXXXXXXX"
+                            className="w-full pl-9 pr-3 p-2.5 bg-white border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-red-500/20 focus:border-red-600"
+                          />
+                        </div>
+                      </div>
+                      {lessonFormState.youtubeVideoId && (
+                        <p className="text-[11px] text-green-700 font-semibold mt-1 flex items-center gap-1">
+                          <Check className="w-3.5 h-3.5" />
+                          YouTube Video ID extracted: <span className="font-mono">{lessonFormState.youtubeVideoId}</span>
+                        </p>
+                      )}
+                    </div>
+
+                    {/* YouTube Preview */}
+                    {lessonFormState.youtubeVideoId && (
+                      <div className="aspect-video w-full rounded-2xl overflow-hidden shadow-md border border-slate-200">
+                        <iframe
+                          src={`https://www.youtube.com/embed/${lessonFormState.youtubeVideoId}`}
+                          className="w-full h-full"
+                          title="YouTube preview"
+                          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                          allowFullScreen
+                        />
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Video Duration (Auto-detected or Manual) */}
+                <div className="grid grid-cols-2 gap-3 pt-1 border-t border-slate-200">
+                  <div>
+                    <label className="text-xs font-semibold text-slate-700 block mb-1">
+                      Video Duration (MM:SS or HH:MM:SS)
+                    </label>
+                    <input
+                      type="text"
+                      value={lessonFormState.duration}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        const sec = parseDurationToSeconds(val);
+                        setLessonFormState((prev) => ({
+                          ...prev,
+                          duration: val,
+                          durationSeconds: sec,
+                        }));
+                      }}
+                      placeholder="e.g. 12:35 or 01:15:42"
+                      className="w-full p-2.5 bg-white border border-slate-200 rounded-xl text-xs font-mono text-slate-900"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-semibold text-slate-700 block mb-1">
+                      Duration in Seconds (Stored internally)
+                    </label>
+                    <input
+                      type="number"
+                      value={lessonFormState.durationSeconds}
+                      onChange={(e) => {
+                        const sec = parseInt(e.target.value, 10) || 0;
+                        setLessonFormState((prev) => ({
+                          ...prev,
+                          durationSeconds: sec,
+                          duration: formatDurationMMSS(sec),
+                        }));
+                      }}
+                      className="w-full p-2.5 bg-white border border-slate-200 rounded-xl text-xs font-mono text-slate-900"
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* 2. TEXT CONTENT TYPE */}
+            {lessonFormState.lessonType === 'TEXT' && (
+              <div className="bg-slate-50/70 border border-slate-200 rounded-2xl p-4 sm:p-5 space-y-3">
+                <div className="flex items-center justify-between border-b border-slate-200 pb-2">
+                  <span className="text-xs font-bold uppercase tracking-wider text-amber-800 flex items-center gap-1.5">
+                    <FileText className="w-3.5 h-3.5 text-amber-600" />
+                    Rich Text Content &amp; Reading Material
+                  </span>
+
+                  {/* Write / Preview Tab */}
+                  <div className="flex items-center gap-1 bg-white p-1 rounded-xl border border-slate-200 text-xs">
+                    <button
+                      type="button"
+                      onClick={() => setLessonFormState((prev) => ({ ...prev, textTab: 'write' }))}
+                      className={`px-3 py-1 rounded-lg font-semibold transition ${
+                        lessonFormState.textTab === 'write'
+                          ? 'bg-amber-600 text-white shadow-2xs'
+                          : 'text-slate-600 hover:text-slate-900'
+                      }`}
+                    >
+                      Write
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setLessonFormState((prev) => ({ ...prev, textTab: 'preview' }))}
+                      className={`px-3 py-1 rounded-lg font-semibold transition ${
+                        lessonFormState.textTab === 'preview'
+                          ? 'bg-amber-600 text-white shadow-2xs'
+                          : 'text-slate-600 hover:text-slate-900'
+                      }`}
+                    >
+                      Preview
+                    </button>
+                  </div>
+                </div>
+
+                {lessonFormState.textTab === 'write' ? (
+                  <div className="space-y-2">
+                    {/* Formatting Helpers */}
+                    <div className="flex items-center gap-1 flex-wrap bg-white p-1.5 rounded-xl border border-slate-200 text-xs">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setLessonFormState((prev) => ({
+                            ...prev,
+                            textContent: prev.textContent + '\n# Heading 1\n',
+                          }))
+                        }
+                        className="px-2 py-1 hover:bg-slate-100 rounded font-bold text-slate-700"
+                      >
+                        H1
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setLessonFormState((prev) => ({
+                            ...prev,
+                            textContent: prev.textContent + '\n## Heading 2\n',
+                          }))
+                        }
+                        className="px-2 py-1 hover:bg-slate-100 rounded font-bold text-slate-700"
+                      >
+                        H2
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setLessonFormState((prev) => ({
+                            ...prev,
+                            textContent: prev.textContent + ' **bold text** ',
+                          }))
+                        }
+                        className="px-2 py-1 hover:bg-slate-100 rounded font-bold text-slate-700"
+                      >
+                        B
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setLessonFormState((prev) => ({
+                            ...prev,
+                            textContent: prev.textContent + ' *italic text* ',
+                          }))
+                        }
+                        className="px-2 py-1 hover:bg-slate-100 rounded italic text-slate-700"
+                      >
+                        I
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setLessonFormState((prev) => ({
+                            ...prev,
+                            textContent: prev.textContent + '\n- Item 1\n- Item 2\n',
+                          }))
+                        }
+                        className="px-2 py-1 hover:bg-slate-100 rounded text-slate-700"
+                      >
+                        • List
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setLessonFormState((prev) => ({
+                            ...prev,
+                            textContent: prev.textContent + ' [Link Title](https://example.com) ',
+                          }))
+                        }
+                        className="px-2 py-1 hover:bg-slate-100 rounded text-slate-700 flex items-center gap-1"
+                      >
+                        <Link2 className="w-3 h-3" />
+                        <span>Link</span>
+                      </button>
+                    </div>
+
+                    <textarea
+                      rows={8}
+                      value={lessonFormState.textContent}
+                      onChange={(e) =>
+                        setLessonFormState((prev) => ({
+                          ...prev,
+                          textContent: e.target.value,
+                          description: e.target.value.substring(0, 150),
+                        }))
+                      }
+                      placeholder="Write comprehensive lesson reading material, notes, code snippets, and explanations..."
+                      className="w-full p-3 bg-white border border-slate-200 rounded-xl text-sm font-sans focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-600"
+                    />
+                  </div>
+                ) : (
+                  <div className="p-4 bg-white border border-slate-200 rounded-xl min-h-[160px] prose prose-sm max-w-none text-slate-800">
+                    {lessonFormState.textContent ? (
+                      <div className="whitespace-pre-wrap">{lessonFormState.textContent}</div>
+                    ) : (
+                      <p className="text-slate-400 italic">No text content written yet. Switch to &quot;Write&quot; tab to add content.</p>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* 3. PDF CONTENT TYPE */}
+            {lessonFormState.lessonType === 'PDF' && (
+              <div className="bg-slate-50/70 border border-slate-200 rounded-2xl p-4 sm:p-5 space-y-3">
+                <span className="text-xs font-bold uppercase tracking-wider text-sky-800 flex items-center gap-1.5 border-b border-slate-200 pb-2">
+                  <FileCheck className="w-3.5 h-3.5 text-sky-600" />
+                  PDF Document Upload
+                </span>
+
+                <div className="border-2 border-dashed border-slate-200 hover:border-sky-400 rounded-2xl p-5 text-center bg-white transition-colors">
+                  <input
+                    type="file"
+                    id="lesson-pdf-picker"
+                    accept="application/pdf,.pdf"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) handleLessonPdfUpload(file);
+                    }}
+                    className="hidden"
+                  />
+                  <label
+                    htmlFor="lesson-pdf-picker"
+                    className="cursor-pointer flex flex-col items-center justify-center gap-2"
+                  >
+                    <div className="w-12 h-12 rounded-full bg-sky-50 text-sky-600 flex items-center justify-center">
+                      <FileUp className="w-6 h-6" />
+                    </div>
+                    <div>
+                      <p className="text-xs font-bold text-slate-800">
+                        {lessonFormState.pdfFileName ? 'Change PDF Document' : 'Click to Upload PDF'}
+                      </p>
+                      <p className="text-[11px] text-slate-400 mt-0.5">
+                        PDF files are stored securely in <span className="font-mono text-slate-500">uploads/pdf/</span>
+                      </p>
+                    </div>
+                  </label>
+                </div>
+
+                {lessonFormState.contentUrl && lessonFormState.lessonType === 'PDF' && (
+                  <div className="p-3 bg-sky-50 border border-sky-200 rounded-xl flex items-center justify-between text-xs">
+                    <div className="flex items-center gap-2">
+                      <CheckCircle2 className="w-4 h-4 text-sky-600" />
+                      <span className="font-bold text-sky-900">PDF Ready:</span>
+                      <span className="font-mono text-slate-700 truncate max-w-[200px]">{lessonFormState.contentUrl}</span>
+                    </div>
+                    <a
+                      href={lessonFormState.contentUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="px-2.5 py-1 bg-white hover:bg-sky-100 text-sky-800 font-bold rounded border border-sky-300 transition"
+                    >
+                      View PDF
+                    </a>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* 4. QUIZ CONTENT TYPE */}
+            {lessonFormState.lessonType === 'QUIZ' && (
+              <div className="bg-slate-50/70 border border-slate-200 rounded-2xl p-4 sm:p-5 space-y-4">
+                <div className="flex items-center justify-between border-b border-slate-200 pb-2">
+                  <span className="text-xs font-bold uppercase tracking-wider text-purple-800 flex items-center gap-1.5">
+                    <HelpCircle className="w-3.5 h-3.5 text-purple-600" />
+                    Assessment &amp; Quiz Configuration
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setLessonFormState((prev) => ({
+                        ...prev,
+                        quizQuestions: [
+                          ...prev.quizQuestions,
+                          {
+                            questionText: `Question ${prev.quizQuestions.length + 1}`,
+                            questionType: 'MCQ',
+                            options: ['Option A', 'Option B', 'Option C', 'Option D'],
+                            correctAnswer: 0,
+                            marks: 1,
+                            explanation: '',
+                          },
+                        ],
+                      }));
+                    }}
+                    className="flex items-center gap-1 px-3 py-1 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-xs font-bold shadow-2xs transition"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>Add Question</span>
+                  </button>
+                </div>
+
+                {/* Quiz Parameters */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  <div>
+                    <label className="text-[11px] font-semibold text-slate-600">Passing Score %</label>
+                    <input
+                      type="number"
+                      value={lessonFormState.passingScore}
+                      onChange={(e) =>
+                        setLessonFormState((prev) => ({ ...prev, passingScore: Number(e.target.value) || 0 }))
+                      }
+                      className="w-full p-2 bg-white border border-slate-200 rounded-lg text-xs font-bold"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[11px] font-semibold text-slate-600">Time Limit (mins)</label>
+                    <input
+                      type="number"
+                      value={lessonFormState.timeLimit}
+                      onChange={(e) =>
+                        setLessonFormState((prev) => ({ ...prev, timeLimit: Number(e.target.value) || 0 }))
+                      }
+                      className="w-full p-2 bg-white border border-slate-200 rounded-lg text-xs font-bold"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[11px] font-semibold text-slate-600">Max Attempts</label>
+                    <input
+                      type="number"
+                      value={lessonFormState.maxAttempts}
+                      onChange={(e) =>
+                        setLessonFormState((prev) => ({ ...prev, maxAttempts: Number(e.target.value) || 0 }))
+                      }
+                      className="w-full p-2 bg-white border border-slate-200 rounded-lg text-xs font-bold"
+                    />
+                  </div>
+                  <div className="flex items-center gap-3 pt-4">
+                    <label className="flex items-center gap-1.5 text-xs text-slate-700 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={lessonFormState.shuffleQuestions}
+                        onChange={(e) =>
+                          setLessonFormState((prev) => ({ ...prev, shuffleQuestions: e.target.checked }))
+                        }
+                        className="rounded text-purple-600"
+                      />
+                      <span>Shuffle</span>
+                    </label>
+                  </div>
+                </div>
+
+                {/* Questions List */}
+                <div className="space-y-4 pt-2">
+                  <div className="text-xs font-bold text-slate-800">
+                    Questions ({lessonFormState.quizQuestions.length})
+                  </div>
+
+                  {lessonFormState.quizQuestions.map((q, qIdx) => (
+                    <div
+                      key={qIdx}
+                      className="bg-white border border-slate-200 rounded-xl p-4 space-y-3 shadow-2xs"
+                    >
+                      <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+                        <span className="font-bold text-xs text-purple-900 bg-purple-50 px-2 py-0.5 rounded border border-purple-200">
+                          Question {qIdx + 1}
+                        </span>
+
+                        <div className="flex items-center gap-1">
+                          <select
+                            value={q.questionType}
+                            onChange={(e: any) => {
+                              const newType = e.target.value;
+                              const updatedQs = [...lessonFormState.quizQuestions];
+                              updatedQs[qIdx] = {
+                                ...updatedQs[qIdx],
+                                questionType: newType,
+                                options: newType === 'TRUE_FALSE' ? ['True', 'False'] : ['Option A', 'Option B', 'Option C', 'Option D'],
+                                correctAnswer: 0,
+                              };
+                              setLessonFormState((prev) => ({ ...prev, quizQuestions: updatedQs }));
+                            }}
+                            className="text-[11px] p-1 bg-slate-50 border border-slate-200 rounded font-semibold text-slate-700"
+                          >
+                            <option value="MCQ">Single Choice / MCQ</option>
+                            <option value="MULTIPLE">Multiple Choice</option>
+                            <option value="TRUE_FALSE">True / False</option>
+                          </select>
+
+                          {/* Move up */}
+                          <button
+                            type="button"
+                            disabled={qIdx === 0}
+                            onClick={() => {
+                              const updatedQs = [...lessonFormState.quizQuestions];
+                              const temp = updatedQs[qIdx];
+                              updatedQs[qIdx] = updatedQs[qIdx - 1];
+                              updatedQs[qIdx - 1] = temp;
+                              setLessonFormState((prev) => ({ ...prev, quizQuestions: updatedQs }));
+                            }}
+                            className="p-1 text-slate-400 hover:text-slate-700 disabled:opacity-30"
+                          >
+                            <ChevronUp className="w-3.5 h-3.5" />
+                          </button>
+
+                          {/* Move down */}
+                          <button
+                            type="button"
+                            disabled={qIdx === lessonFormState.quizQuestions.length - 1}
+                            onClick={() => {
+                              const updatedQs = [...lessonFormState.quizQuestions];
+                              const temp = updatedQs[qIdx];
+                              updatedQs[qIdx] = updatedQs[qIdx + 1];
+                              updatedQs[qIdx + 1] = temp;
+                              setLessonFormState((prev) => ({ ...prev, quizQuestions: updatedQs }));
+                            }}
+                            className="p-1 text-slate-400 hover:text-slate-700 disabled:opacity-30"
+                          >
+                            <ChevronDown className="w-3.5 h-3.5" />
+                          </button>
+
+                          {/* Delete */}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const updatedQs = lessonFormState.quizQuestions.filter((_, idx) => idx !== qIdx);
+                              setLessonFormState((prev) => ({ ...prev, quizQuestions: updatedQs }));
+                            }}
+                            className="p-1 text-slate-400 hover:text-rose-600"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Question Text */}
+                      <input
+                        type="text"
+                        value={q.questionText}
+                        onChange={(e) => {
+                          const updatedQs = [...lessonFormState.quizQuestions];
+                          updatedQs[qIdx] = { ...updatedQs[qIdx], questionText: e.target.value };
+                          setLessonFormState((prev) => ({ ...prev, quizQuestions: updatedQs }));
+                        }}
+                        placeholder="Enter question statement..."
+                        className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold"
+                      />
+
+                      {/* Options */}
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        {q.options.map((opt, optIdx) => (
+                          <div
+                            key={optIdx}
+                            className={`flex items-center gap-2 p-2 rounded-lg border ${
+                              q.correctAnswer === optIdx
+                                ? 'bg-emerald-50 border-emerald-300 ring-1 ring-emerald-400'
+                                : 'bg-slate-50 border-slate-200'
+                            }`}
+                          >
+                            <input
+                              type="radio"
+                              name={`correct-ans-${qIdx}`}
+                              checked={q.correctAnswer === optIdx}
+                              onChange={() => {
+                                const updatedQs = [...lessonFormState.quizQuestions];
+                                updatedQs[qIdx] = { ...updatedQs[qIdx], correctAnswer: optIdx };
+                                setLessonFormState((prev) => ({ ...prev, quizQuestions: updatedQs }));
+                              }}
+                              className="text-emerald-600"
+                              title="Set as correct answer"
+                            />
+                            <span className="text-[11px] font-bold text-slate-500 w-5">
+                              {String.fromCharCode(65 + optIdx)}:
+                            </span>
+                            <input
+                              type="text"
+                              value={opt}
+                              onChange={(e) => {
+                                const updatedQs = [...lessonFormState.quizQuestions];
+                                const updatedOpts = [...updatedQs[qIdx].options];
+                                updatedOpts[optIdx] = e.target.value;
+                                updatedQs[qIdx] = { ...updatedQs[qIdx], options: updatedOpts };
+                                setLessonFormState((prev) => ({ ...prev, quizQuestions: updatedQs }));
+                              }}
+                              className="w-full bg-transparent text-xs text-slate-800 focus:outline-none"
+                            />
+                          </div>
+                        ))}
+                      </div>
+
+                      {/* Explanation */}
+                      <input
+                        type="text"
+                        value={q.explanation}
+                        onChange={(e) => {
+                          const updatedQs = [...lessonFormState.quizQuestions];
+                          updatedQs[qIdx] = { ...updatedQs[qIdx], explanation: e.target.value };
+                          setLessonFormState((prev) => ({ ...prev, quizQuestions: updatedQs }));
+                        }}
+                        placeholder="Optional explanation shown after answering..."
+                        className="w-full p-1.5 bg-slate-50 border border-slate-200 rounded text-[11px] text-slate-600"
+                      />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* 5. ASSIGNMENT CONTENT TYPE */}
+            {lessonFormState.lessonType === 'ASSIGNMENT' && (
+              <div className="bg-slate-50/70 border border-slate-200 rounded-2xl p-4 sm:p-5 space-y-3">
+                <span className="text-xs font-bold uppercase tracking-wider text-emerald-800 flex items-center gap-1.5 border-b border-slate-200 pb-2">
+                  <Award className="w-3.5 h-3.5 text-emerald-600" />
+                  Practical Assignment &amp; Project Task
+                </span>
+
+                <div>
+                  <label className="text-xs font-semibold text-slate-700 block mb-1">
+                    Assignment Instructions *
+                  </label>
+                  <textarea
+                    rows={4}
+                    value={lessonFormState.assignmentInstructions}
+                    onChange={(e) =>
+                      setLessonFormState((prev) => ({ ...prev, assignmentInstructions: e.target.value }))
+                    }
+                    placeholder="Provide detailed instructions, grading criteria, deliverables, and guidelines..."
+                    className="w-full p-2.5 bg-white border border-slate-200 rounded-xl text-xs text-slate-900"
+                  />
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div>
+                    <label className="text-xs font-semibold text-slate-700 block mb-1">
+                      Submission Type
+                    </label>
+                    <select
+                      value={lessonFormState.assignmentSubmissionType}
+                      onChange={(e: any) =>
+                        setLessonFormState((prev) => ({ ...prev, assignmentSubmissionType: e.target.value }))
+                      }
+                      className="w-full p-2.5 bg-white border border-slate-200 rounded-xl text-xs text-slate-900"
+                    >
+                      <option value="FILE">File Upload (ZIP, PDF, Repo)</option>
+                      <option value="TEXT">Text Submission</option>
+                      <option value="LINK">External Link (GitHub, URL)</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-semibold text-slate-700 block mb-1">
+                      Maximum Marks
+                    </label>
+                    <input
+                      type="number"
+                      value={lessonFormState.assignmentMaxMarks}
+                      onChange={(e) =>
+                        setLessonFormState((prev) => ({ ...prev, assignmentMaxMarks: Number(e.target.value) || 0 }))
+                      }
+                      className="w-full p-2.5 bg-white border border-slate-200 rounded-xl text-xs text-slate-900 font-bold"
+                    />
+                  </div>
+
+                  <div className="flex items-center pt-5">
+                    <label className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={lessonFormState.assignmentAllowResubmission}
+                        onChange={(e) =>
+                          setLessonFormState((prev) => ({ ...prev, assignmentAllowResubmission: e.target.checked }))
+                        }
+                        className="rounded text-emerald-600"
+                      />
+                      <span>Allow Resubmission</span>
+                    </label>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* General Toggles */}
+            <div className="flex items-center justify-between pt-2 border-t border-slate-100">
+              <label className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={lessonFormState.freePreview}
+                  onChange={(e) =>
+                    setLessonFormState((prev) => ({ ...prev, freePreview: e.target.checked }))
+                  }
+                  className="w-4 h-4 rounded text-green-600 focus:ring-green-500 border-slate-300"
+                />
+                <span>Free Preview Lesson</span>
+              </label>
+
+              <label className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={lessonFormState.required}
+                  onChange={(e) =>
+                    setLessonFormState((prev) => ({ ...prev, required: e.target.checked }))
+                  }
+                  className="w-4 h-4 rounded text-green-600 focus:ring-green-500 border-slate-300"
+                />
+                <span>Required for Course Completion</span>
+              </label>
+            </div>
+
+            {/* Actions */}
+            <div className="flex justify-end gap-2 pt-4 border-t border-slate-100">
               <button
                 type="button"
-                onClick={() => setEditingLesson(null)}
+                onClick={() => setLessonModalOpen(false)}
                 className="px-4 py-2 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 rounded-xl text-xs font-semibold cursor-pointer transition"
               >
                 Cancel
               </button>
               <button
                 type="button"
-                onClick={handleSaveEditLesson}
-                className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white font-bold rounded-xl text-xs cursor-pointer shadow-xs transition"
+                onClick={handleSaveLessonModal}
+                className="flex items-center gap-1.5 px-5 py-2.5 bg-green-600 hover:bg-green-700 text-white font-bold rounded-xl text-xs cursor-pointer shadow-xs transition"
               >
-                Update Lesson
+                <Save className="w-3.5 h-3.5" />
+                <span>{lessonModalMode === 'create' ? 'Create Lesson' : 'Update Lesson'}</span>
               </button>
             </div>
           </div>
         </div>
       )}
+
     </div>
   );
 };

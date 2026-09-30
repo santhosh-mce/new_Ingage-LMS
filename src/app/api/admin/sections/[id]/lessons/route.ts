@@ -65,9 +65,44 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
         free_preview: Boolean(body.freePreview || body.free_preview),
         required: body.required !== false,
         display_order: body.displayOrder !== undefined ? Number(body.displayOrder) : count,
+        video_key: body.videoKey || body.video_key || body.youtubeVideoId || null,
         created_at: new Date(),
       },
     });
+
+    if (Array.isArray(body.quizQuestions) && body.quizQuestions.length > 0) {
+      for (let qIdx = 0; qIdx < body.quizQuestions.length; qIdx++) {
+        const q = body.quizQuestions[qIdx];
+        const correctIndex = typeof q.correctAnswer === 'number'
+          ? q.correctAnswer
+          : (typeof q.correctAnswer === 'string' && ['A','B','C','D'].includes(q.correctAnswer.toUpperCase())
+              ? ['A','B','C','D'].indexOf(q.correctAnswer.toUpperCase())
+              : 0);
+
+        const createdQ = await prisma.quiz_questions.create({
+          data: {
+            lesson_id: newLesson.id,
+            question_text: q.questionText || q.question || `Question ${qIdx + 1}`,
+            display_order: qIdx,
+            correct_option_index: correctIndex,
+            explanation: q.explanation || null,
+          },
+        });
+
+        const options = Array.isArray(q.options) && q.options.length > 0
+          ? q.options
+          : ['Option A', 'Option B', 'Option C', 'Option D'];
+        for (let optIdx = 0; optIdx < options.length; optIdx++) {
+          await prisma.quiz_question_options.create({
+            data: {
+              question_id: createdQ.id,
+              option_text: String(options[optIdx] || `Option ${optIdx + 1}`),
+              option_order: optIdx,
+            },
+          });
+        }
+      }
+    }
 
     // Update parent course total duration if course exists
     try {

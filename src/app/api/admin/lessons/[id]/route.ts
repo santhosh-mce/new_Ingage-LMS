@@ -73,10 +73,62 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
       data.display_order = Number(body.displayOrder ?? body.display_order);
     }
 
+    if (body.videoKey !== undefined || body.video_key !== undefined || body.youtubeVideoId !== undefined) {
+      data.video_key = body.videoKey || body.video_key || body.youtubeVideoId || null;
+    }
+
     const updated = await prisma.course_lessons.update({
       where: { id: lessonId },
       data,
     });
+
+    // If quiz questions are supplied, sync them
+    if (Array.isArray(body.quizQuestions)) {
+      const existingQs = await prisma.quiz_questions.findMany({
+        where: { lesson_id: lessonId },
+        select: { id: true },
+      });
+      for (const eq of existingQs) {
+        await prisma.quiz_question_options.deleteMany({
+          where: { question_id: eq.id },
+        });
+      }
+      await prisma.quiz_questions.deleteMany({
+        where: { lesson_id: lessonId },
+      });
+
+      for (let qIdx = 0; qIdx < body.quizQuestions.length; qIdx++) {
+        const q = body.quizQuestions[qIdx];
+        const correctIndex = typeof q.correctAnswer === 'number'
+          ? q.correctAnswer
+          : (typeof q.correctAnswer === 'string' && ['A','B','C','D'].includes(q.correctAnswer.toUpperCase())
+              ? ['A','B','C','D'].indexOf(q.correctAnswer.toUpperCase())
+              : 0);
+
+        const createdQ = await prisma.quiz_questions.create({
+          data: {
+            lesson_id: lessonId,
+            question_text: q.questionText || q.question || `Question ${qIdx + 1}`,
+            display_order: qIdx,
+            correct_option_index: correctIndex,
+            explanation: q.explanation || null,
+          },
+        });
+
+        const options = Array.isArray(q.options) && q.options.length > 0
+          ? q.options
+          : ['Option A', 'Option B', 'Option C', 'Option D'];
+        for (let optIdx = 0; optIdx < options.length; optIdx++) {
+          await prisma.quiz_question_options.create({
+            data: {
+              question_id: createdQ.id,
+              option_text: String(options[optIdx] || `Option ${optIdx + 1}`),
+              option_order: optIdx,
+            },
+          });
+        }
+      }
+    }
 
     // Recalculate course total duration
     try {

@@ -14,6 +14,16 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
       include: {
         course_lessons: {
           orderBy: { display_order: "asc" },
+          include: {
+            quiz_questions: {
+              orderBy: { display_order: "asc" },
+              include: {
+                quiz_question_options: {
+                  orderBy: { option_order: "asc" },
+                },
+              },
+            },
+          },
         },
       },
     });
@@ -36,6 +46,15 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
         required: les.required !== false,
         displayOrder: les.display_order,
         sectionId: Number(les.section_id),
+        videoKey: les.video_key || "",
+        quizQuestions: (les.quiz_questions || []).map((q: any) => ({
+          id: Number(q.id),
+          questionText: q.question_text,
+          correctAnswer: q.correct_option_index,
+          explanation: q.explanation || "",
+          displayOrder: q.display_order,
+          options: (q.quiz_question_options || []).map((o: any) => o.option_text),
+        })),
       })),
     }));
 
