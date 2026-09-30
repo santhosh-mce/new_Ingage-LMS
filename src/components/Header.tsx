@@ -44,7 +44,13 @@ interface HeaderProps {
 
 export function Header({ currentPath, onNavigate, currentUser: propUser, onOpenAuth, onLogout }: HeaderProps) {
   const { user: authUser } = useAppSelector((state) => state.auth);
-  const currentUser = propUser || authUser;
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  const currentUser = mounted ? (propUser || authUser) : null;
 
   const [searchQuery, setSearchQuery] = useState('');
   const [isFocused, setIsFocused] = useState('');

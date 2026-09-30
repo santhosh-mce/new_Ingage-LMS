@@ -83,7 +83,12 @@ const SCREENS: ScreenItem[] = [
   { name: 'Welcome Back (Log In)', path: '/login', desc: 'Modal with remember me & reset', icon: LogIn, section: 'AUTH' },
 ];
 
-export function ScreenNavigator({ currentPath, onNavigate, currentUser }: ScreenNavigatorProps) {
+export function ScreenNavigator({ currentPath, onNavigate, currentUser: propUser }: ScreenNavigatorProps) {
+  const [mounted, setMounted] = React.useState(false);
+  React.useEffect(() => {
+    setMounted(true);
+  }, []);
+  const currentUser = mounted ? propUser : null;
   const [isOpen, setIsOpen] = useState(false);
   const [filterQuery, setFilterQuery] = useState('');
 
