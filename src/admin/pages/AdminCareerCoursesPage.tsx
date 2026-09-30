@@ -252,7 +252,7 @@ export const AdminCareerCoursesPage: React.FC<AdminCareerCoursesPageProps> = ({
 
       {/* Loading Skeleton */}
       {loading && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {[...Array(8)].map((_, i) => (
             <div key={i} className="bg-white rounded-2xl border border-slate-200 p-4 space-y-4 animate-pulse">
               <div className="w-full h-44 bg-slate-200 rounded-xl" />
@@ -293,7 +293,7 @@ export const AdminCareerCoursesPage: React.FC<AdminCareerCoursesPageProps> = ({
 
       {/* Card Grid (NO TABLE) */}
       {!loading && !error && filteredCareers.length > 0 && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {filteredCareers.map((career) => {
             const isPublished = career.published !== false;
             const thumb = career.imageUrl || career.image_url || career.thumbnail;
