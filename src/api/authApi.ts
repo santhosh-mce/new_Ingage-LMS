@@ -11,15 +11,6 @@ export interface LoginRequest {
   password?: string;
 }
 
-export interface RequestLoginOtpRequest {
-  email: string;
-}
-
-export interface VerifyLoginOtpRequest {
-  email: string;
-  otp: string;
-}
-
 export interface AuthResponse {
   message: string;
   token?: string | null;
@@ -27,7 +18,6 @@ export interface AuthResponse {
   name?: string;
   email?: string;
   role?: string;
-  otp?: string;
 }
 
 export interface CurrentUserResponse {
@@ -68,35 +58,15 @@ export interface SignupRequest {
   password: string;
 }
 
-export interface VerifySignupOtpRequest {
-  email: string;
-  otp: string;
-}
-
-export interface ResendSignupOtpRequest {
-  email: string;
-}
-
 export interface ForgotPasswordRequest {
   email: string;
 }
 
-export interface VerifyForgotPasswordOtpRequest {
-  email: string;
-  otp: string;
-}
-
 export interface ResetPasswordRequest {
   email: string;
-  resetToken: string;
-  newPassword: string;
-  confirmPassword: string;
-}
-
-export interface VerifyOtpResponse {
-  success: boolean;
-  message: string;
   resetToken?: string;
+  newPassword: string;
+  confirmPassword?: string;
 }
 
 export async function signupUser(payload: SignupRequest): Promise<AuthResponse> {
@@ -104,23 +74,8 @@ export async function signupUser(payload: SignupRequest): Promise<AuthResponse> 
   return response.data;
 }
 
-export async function verifySignupOtp(payload: VerifySignupOtpRequest): Promise<AuthResponse> {
-  const response = await authClient.post<AuthResponse>('/auth/verify-signup-otp', payload);
-  return response.data;
-}
-
-export async function resendSignupOtp(email: string): Promise<{ success: boolean; message: string; email: string }> {
-  const response = await authClient.post<{ success: boolean; message: string; email: string }>('/auth/resend-signup-otp', { email });
-  return response.data;
-}
-
 export async function forgotPassword(email: string): Promise<{ success: boolean; message: string; email: string }> {
   const response = await authClient.post<{ success: boolean; message: string; email: string }>('/auth/forgot-password', { email });
-  return response.data;
-}
-
-export async function verifyForgotPasswordOtp(payload: VerifyForgotPasswordOtpRequest): Promise<VerifyOtpResponse> {
-  const response = await authClient.post<VerifyOtpResponse>('/auth/verify-forgot-password-otp', payload);
   return response.data;
 }
 
@@ -136,16 +91,6 @@ export async function registerUser(payload: RegisterRequest): Promise<AuthRespon
 
 export async function loginUser(payload: LoginRequest): Promise<AuthResponse> {
   const response = await authClient.post<AuthResponse>('/auth/login', payload);
-  return response.data;
-}
-
-export async function requestLoginOtp(email: string): Promise<{ message: string; email: string; otp?: string }> {
-  const response = await authClient.post<{ message: string; email: string; otp?: string }>('/auth/login/request-otp', { email });
-  return response.data;
-}
-
-export async function verifyLoginOtp(payload: VerifyLoginOtpRequest): Promise<AuthResponse> {
-  const response = await authClient.post<AuthResponse>('/auth/login/verify-otp', payload);
   return response.data;
 }
 
@@ -200,19 +145,13 @@ export function getAuthErrorMessage(error: unknown, fallback: string): string {
   return fallback;
 }
 
-/**
- * Resolves any avatar / profile image path to a fully qualified, accessible URL.
- * Handles relative paths, /uploads/, /api/uploads/, and maps legacy localhost:8080 URLs to local app.
- */
 export function getAccessibleImageUrl(path?: string | null): string {
   if (!path || typeof path !== 'string' || !path.trim()) return '';
   const clean = path.trim();
 
-  // If already absolute with protocol
   if (clean.startsWith('http://') || clean.startsWith('https://') || clean.startsWith('data:') || clean.startsWith('blob:')) {
     try {
       const url = new URL(clean);
-      // Fix cases where backend port 8080/8000 URL was created: map to local relative path
       if (url.port === '8080' || url.port === '8000' || url.hostname === 'localhost') {
         let p = url.pathname;
         if (!p.startsWith('/api/') && !p.startsWith('/uploads/')) {
@@ -226,7 +165,6 @@ export function getAccessibleImageUrl(path?: string | null): string {
     return clean;
   }
 
-  // Base API configuration (e.g., http://localhost:8080/api)
   const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL || '/api' || 'http://localhost:8080/api';
   const backendOrigin = apiBase.replace(/\/api\/?$/, '');
 
@@ -243,6 +181,5 @@ export function getAccessibleImageUrl(path?: string | null): string {
     return clean;
   }
 
-  // Pure filename: e.g. user-07fc075e-8d46b1fe7eef443f8ea6a1ab1fc7ceaf.jpg
   return `/uploads/profile-images/${clean}`;
 }

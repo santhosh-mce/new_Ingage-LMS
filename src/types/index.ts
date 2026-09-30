@@ -86,8 +86,5 @@ export type AuthMode =
   | 'signup'
   | 'login'
   | 'forgot-password'
-  | 'verify-otp'
-  | 'verify-signup-otp'
-  | 'verify-forgot-otp'
   | 'reset-password';
 

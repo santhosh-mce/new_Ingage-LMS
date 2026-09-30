@@ -1,21 +1,17 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { hashPassword } from "@/lib/auth";
-import { generateOtp, hashOtp, sendOtpEmail } from "@/lib/email";
+import { hashPassword, signToken } from "@/lib/auth";
 import crypto from "crypto";
 
 export async function POST(req: Request) {
   try {
     const { name, email, password } = await req.json();
 
-    if (!name || !name.trim()) {
-      return NextResponse.json({ error: "Full name is required" }, { status: 400 });
-    }
-    if (!email || !email.trim()) {
-      return NextResponse.json({ error: "Email address is required" }, { status: 400 });
-    }
-    if (!password || password.length < 6) {
-      return NextResponse.json({ error: "Password must be at least 6 characters" }, { status: 400 });
+    if (!name || !email || !password) {
+      return NextResponse.json(
+        { error: "Name, email, and password are required" },
+        { status: 400 }
+      );
     }
 
     const cleanEmail = email.toLowerCase().trim();
@@ -32,91 +28,55 @@ export async function POST(req: Request) {
       );
     }
 
-    // Cooldown check on pending registration
-    const existingPending = await prisma.pending_registrations.findUnique({
-      where: { email: cleanEmail },
-    });
-
-    if (existingPending && existingPending.last_resent_at) {
-      const elapsedSeconds = Math.floor((Date.now() - new Date(existingPending.last_resent_at).getTime()) / 1000);
-      if (elapsedSeconds < 60) {
-        return NextResponse.json(
-          { error: `Please wait ${60 - elapsedSeconds} seconds before requesting a new OTP` },
-          { status: 429 }
-        );
-      }
-    }
-
-    const otp = generateOtp();
-    const hashedOtp = hashOtp(otp);
     const passwordHash = await hashPassword(password);
-    const expiresAt = new Date(Date.now() + 5 * 60 * 1000); // 5 minutes
+    const userId = crypto.randomUUID();
 
-    // Store in pending_registrations
-    await prisma.pending_registrations.upsert({
-      where: { email: cleanEmail },
-      create: {
-        id: crypto.randomUUID(),
-        email: cleanEmail,
+    // Create user directly without OTP
+    const user = await prisma.users.create({
+      data: {
+        id: userId,
         name: name.trim(),
+        email: cleanEmail,
         password_hash: passwordHash,
         role: "STUDENT",
-        otp_hash: hashedOtp,
-        otp_expires_at: expiresAt,
-        otp_attempts: 0,
-        last_resent_at: new Date(),
-        created_at: new Date(),
-      },
-      update: {
-        name: name.trim(),
-        password_hash: passwordHash,
-        otp_hash: hashedOtp,
-        otp_expires_at: expiresAt,
-        otp_attempts: 0,
-        last_resent_at: new Date(),
-      },
-    });
-
-    // Also record in otp_verifications for audit trail
-    await prisma.otp_verifications.create({
-      data: {
-        id: crypto.randomUUID(),
-        email: cleanEmail,
-        purpose: "SIGNUP",
-        otp_hash: hashedOtp,
-        expires_at: expiresAt,
-        attempt_count: 0,
-        last_resent_at: new Date(),
-        used: false,
+        provider: "LOCAL",
+        active: true,
+        email_verified: true, // No OTP verification required
+        welcome_email_sent: false,
         created_at: new Date(),
       },
     });
 
-    // Send OTP via SMTP
-    try {
-      await sendOtpEmail({
-        to: cleanEmail,
-        otp,
-        purpose: "SIGNUP",
-        userName: name.trim(),
-      });
-    } catch (mailErr) {
-      console.error("Mail send error:", mailErr);
-      return NextResponse.json(
-        { error: "Unable to send verification email. Please verify SMTP settings." },
-        { status: 500 }
-      );
-    }
+    const token = signToken({
+      userId: user.id,
+      email: user.email,
+      role: user.role,
+      name: user.name,
+    });
 
-    return NextResponse.json({
+    const response = NextResponse.json({
       success: true,
-      message: "Verification OTP sent to your email",
-      email: cleanEmail,
+      message: "Account created successfully",
+      token,
+      userId: user.id,
+      name: user.name,
+      email: user.email,
+      role: user.role,
     });
+
+    response.cookies.set("AUTH_TOKEN", token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      maxAge: 60 * 60 * 24, // 24 hours
+      path: "/",
+    });
+
+    return response;
   } catch (error: any) {
-    console.error("Signup error:", error);
+    console.error("Registration error:", error);
     return NextResponse.json(
-      { error: error?.message || "Failed to initiate signup" },
+      { error: error?.message || "Failed to create account" },
       { status: 500 }
     );
   }

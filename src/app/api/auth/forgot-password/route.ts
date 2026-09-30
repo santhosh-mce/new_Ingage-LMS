@@ -1,88 +1,43 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { generateOtp, hashOtp, sendOtpEmail } from "@/lib/email";
-import crypto from "crypto";
+import { hashPassword } from "@/lib/auth";
 
 export async function POST(req: Request) {
   try {
-    const { email } = await req.json();
+    const { email, newPassword } = await req.json();
 
-    if (!email || !email.trim()) {
+    if (!email) {
       return NextResponse.json({ error: "Email is required" }, { status: 400 });
     }
 
     const cleanEmail = email.toLowerCase().trim();
-
-    // Check account existence without exposing enumeration risk
     const user = await prisma.users.findUnique({
       where: { email: cleanEmail },
     });
 
     if (!user) {
-      // Generic response for security
+      // Don't reveal account existence
       return NextResponse.json({
         success: true,
-        message: "If an account with this email exists, a password reset code has been sent.",
-        email: cleanEmail,
+        message: "If an account exists, password has been updated",
       });
     }
 
-    // Cooldown check on latest OTP
-    const latestOtp = await prisma.otp_verifications.findFirst({
-      where: { email: cleanEmail, purpose: "PASSWORD_RESET", used: false },
-      orderBy: { created_at: "desc" },
-    });
-
-    if (latestOtp && latestOtp.last_resent_at) {
-      const elapsed = Math.floor((Date.now() - new Date(latestOtp.last_resent_at).getTime()) / 1000);
-      if (elapsed < 60) {
-        return NextResponse.json(
-          { error: `Please wait ${60 - elapsed} seconds before requesting a new OTP` },
-          { status: 429 }
-        );
-      }
+    if (newPassword) {
+      const passwordHash = await hashPassword(newPassword);
+      await prisma.users.update({
+        where: { id: user.id },
+        data: { password_hash: passwordHash },
+      });
     }
-
-    // Invalidate existing unused password reset OTPs
-    await prisma.otp_verifications.updateMany({
-      where: { email: cleanEmail, purpose: "PASSWORD_RESET", used: false },
-      data: { used: true },
-    });
-
-    const otp = generateOtp();
-    const hashedOtp = hashOtp(otp);
-    const expiresAt = new Date(Date.now() + 5 * 60 * 1000);
-
-    await prisma.otp_verifications.create({
-      data: {
-        id: crypto.randomUUID(),
-        email: cleanEmail,
-        purpose: "PASSWORD_RESET",
-        otp_hash: hashedOtp,
-        expires_at: expiresAt,
-        attempt_count: 0,
-        last_resent_at: new Date(),
-        used: false,
-        created_at: new Date(),
-      },
-    });
-
-    await sendOtpEmail({
-      to: cleanEmail,
-      otp,
-      purpose: "PASSWORD_RESET",
-      userName: user.name,
-    });
 
     return NextResponse.json({
       success: true,
-      message: "If an account with this email exists, a password reset code has been sent.",
-      email: cleanEmail,
+      message: "Password updated successfully",
     });
   } catch (error: any) {
-    console.error("Forgot password error:", error);
     return NextResponse.json(
-      { error: error?.message || "Failed to process password reset" },
+      { error: error?.message || "Failed to process request" },
       { status: 500 }
     );
   }

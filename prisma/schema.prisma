@@ -583,19 +583,6 @@ model orders {
   payments          payments[]
 }
 
-model otp_verifications {
-  id             String    @id @db.Uuid
-  attempt_count  Int
-  created_at     DateTime  @db.Timestamptz(6)
-  email          String    @db.VarChar(255)
-  expires_at     DateTime  @db.Timestamptz(6)
-  last_resent_at DateTime? @db.Timestamptz(6)
-  otp_hash       String    @db.VarChar(255)
-  purpose        String    @db.VarChar(50)
-  used           Boolean
-
-  @@index([email, purpose], map: "idx_otp_email_purpose")
-}
 
 model password_reset_tokens {
   id         String   @id @db.Uuid
@@ -636,18 +623,6 @@ model payments {
 }
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
-model pending_registrations {
-  id             String    @id @db.Uuid
-  created_at     DateTime  @db.Timestamptz(6)
-  email          String    @unique(map: "idx_pending_email") @db.VarChar(255)
-  last_resent_at DateTime? @db.Timestamptz(6)
-  name           String    @db.VarChar(100)
-  otp_attempts   Int
-  otp_expires_at DateTime  @db.Timestamptz(6)
-  otp_hash       String    @db.VarChar(255)
-  password_hash  String    @db.VarChar(255)
-  role           String    @db.VarChar(20)
-}
 
 model platform_settings {
   id            BigInt    @id @default(autoincrement())
