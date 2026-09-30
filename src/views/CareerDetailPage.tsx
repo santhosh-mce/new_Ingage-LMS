@@ -350,7 +350,7 @@ export function CareerDetailPage({
     // 1. User is NOT logged in
     if (!currentUser) {
       if (onShowToast) {
-        onShowToast('Sign Up to Continue: Create a free account to get started.');
+        onShowToast('Please log in to bookmark courses.');
       }
       if (onOpenAuth) {
         onOpenAuth('signup', `/roles/${career.slug || roleId}`);
@@ -393,7 +393,7 @@ export function CareerDetailPage({
       console.error('Failed to download curriculum:', err);
       if (err.response?.status === 401) {
         if (onShowToast) {
-          onShowToast('Sign Up to Continue: Please log in to download curriculum.');
+          onShowToast('Please log in to download curriculum.');
         }
         if (onOpenAuth) {
           onOpenAuth('login', `/roles/${career.slug || roleId}`);
@@ -425,20 +425,40 @@ export function CareerDetailPage({
     }
   };
 
-  // Handle Main Career Path Purchase (Option B) or Resume Learning
+  // Handle Main Career Path Purchase or Resume Learning
   const handleEnrollClick = async () => {
     if (!currentUser) {
-      if (onShowToast) {
-        onShowToast(`Please sign in or create an account to enroll in ${career.title}.`);
+      const currentPath =
+        typeof window !== 'undefined'
+          ? window.location.pathname
+          : `/careers/${career?.slug || roleId}`;
+
+      if (typeof window !== 'undefined') {
+        try {
+          sessionStorage.setItem('ingage_redirect_after_auth', currentPath);
+          if (career?.id) {
+            sessionStorage.setItem('auto_checkout_career', String(career.id));
+          }
+        } catch {}
       }
+
+      if (onShowToast) {
+        onShowToast(`Please sign in or create an account to enroll in ${career?.title || 'this Career Path'}.`);
+      }
+
       if (onOpenAuth) {
-        onOpenAuth('signup', `/roles/${career.slug || roleId}`);
+        onOpenAuth('login', currentPath);
+      } else {
+        onNavigate(`/login?redirect=${encodeURIComponent(currentPath)}`);
       }
       return;
     }
 
     if (isEnrolledInCareer || isCareerCompleted) {
-      const firstCourseId = career.courses?.[0]?.courseId;
+      if (onShowToast) {
+        onShowToast(`You are enrolled in ${career?.title || 'this program'}. Resuming learning...`);
+      }
+      const firstCourseId = career?.courses?.[0]?.courseId;
       if (firstCourseId) {
         onNavigate(`/courses/${firstCourseId}`);
       } else {
@@ -662,13 +682,13 @@ export function CareerDetailPage({
                       <span>Opening Checkout...</span>
                     </>
                   ) : !currentUser ? (
-                    'Sign Up to Continue'
+                    'Buy Now'
                   ) : isCareerCompleted ? (
                     'Program Completed'
                   ) : isEnrolledInCareer ? (
                     'Continue Learning'
                   ) : (
-                    `Enroll Now (₹${(career.price || 14999).toLocaleString('en-IN')})`
+                    'Buy Now'
                   )}
                 </button>
 
@@ -1015,7 +1035,7 @@ export function CareerDetailPage({
                               onClick={(e) => handleCourseAction(c, e)}
                               className="w-full py-2.5 px-4 bg-[#8DB600] hover:bg-[#7ba000] text-gray-900 font-bold text-xs rounded-xl shadow-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer"
                             >
-                              <span>Sign Up to Continue</span>
+                              <span>Buy Course (₹{(c.coursePrice || c.price || 0).toLocaleString('en-IN')})</span>
                             </button>
                           ) : (
                             <button
@@ -1321,12 +1341,12 @@ export function CareerDetailPage({
                   <button
                     id="pricing-sidebar-signup-btn"
                     onClick={handleEnrollClick}
-                    className="w-full mt-6 py-3.5 px-6 rounded-xl bg-lime-600 hover:bg-lime-700 text-white font-bold text-base shadow-xs transition-colors text-center cursor-pointer"
+                    className="w-full mt-6 py-3.5 px-6 rounded-xl bg-lime-600 hover:bg-lime-700 text-white font-bold text-base shadow-xs transition-colors text-center cursor-pointer flex items-center justify-center gap-2"
                   >
-                    Sign Up to Continue
+                    <span>Buy Now</span>
                   </button>
                   <p className="text-xs text-gray-500 text-center mt-2 font-medium">
-                    Create a free account to get started
+                    One-time payment • Lifetime access
                   </p>
                 </>
               ) : isCareerCompleted ? (
@@ -1373,7 +1393,7 @@ export function CareerDetailPage({
                     ) : (
                       <>
                         <Sparkles className="w-5 h-5" />
-                        <span>Enroll Now (₹{(career.price || 14999).toLocaleString('en-IN')})</span>
+                        <span>Buy Now</span>
                       </>
                     )}
                   </button>

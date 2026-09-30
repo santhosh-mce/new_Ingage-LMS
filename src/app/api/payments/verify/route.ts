@@ -15,6 +15,8 @@ export async function POST(req: Request) {
       razorpay_order_id,
       razorpay_payment_id,
       razorpay_signature,
+      careerId,
+      courseId,
     } = await req.json();
 
     if (!razorpay_order_id || !razorpay_payment_id || !razorpay_signature) {
@@ -60,8 +62,8 @@ export async function POST(req: Request) {
         payment_number: paymentNumber,
         user_id: user.id,
         order_id: order.id,
-        course_id: order.course_id,
-        career_id: order.career_id,
+        course_id: order.course_id || (courseId ? BigInt(courseId) : null),
+        career_id: order.career_id || (careerId ? BigInt(careerId) : null),
         payment_type: order.payment_type,
         amount: order.original_amount,
         discount: order.discount_amount,
@@ -95,10 +97,31 @@ export async function POST(req: Request) {
           status: "ACTIVE",
         },
       });
-    } else if (order.career_id) {
-      // Enroll in all career courses
+    }
+
+    const targetCareerId = order.career_id || (careerId ? BigInt(careerId) : null);
+    if (targetCareerId) {
+      // 1. Activate Career Enrollment
+      await prisma.career_enrollments.upsert({
+        where: {
+          user_id_career_id: {
+            user_id: user.id,
+            career_id: targetCareerId,
+          },
+        },
+        update: { status: "ACTIVE" },
+        create: {
+          user_id: user.id,
+          career_id: targetCareerId,
+          enrolled_at: new Date(),
+          progress_percentage: 0,
+          status: "ACTIVE",
+        },
+      });
+
+      // 2. Enroll in all career courses
       const careerCourses = await prisma.career_courses.findMany({
-        where: { career_id: order.career_id },
+        where: { career_id: targetCareerId },
       });
 
       for (const cc of careerCourses) {

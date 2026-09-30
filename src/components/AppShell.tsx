@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { Header } from "./Header";
 import { Footer } from "./Footer";
@@ -23,13 +23,25 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
-  React.useEffect(() => {
-    if (pathname === '/login') {
-      openAuthModal('login');
-    } else if (pathname === '/signup') {
-      openAuthModal('signup');
-    } else if (pathname === '/forgot-password' || pathname === '/reset-password') {
-      openAuthModal('forgot-password');
+  useEffect(() => {
+    let redirectUrl: string | null = null;
+    if (typeof window !== "undefined") {
+      const sp = new URLSearchParams(window.location.search);
+      const qRedirect = sp.get("redirect") || sp.get("returnUrl") || sp.get("callbackUrl");
+      if (qRedirect && qRedirect.startsWith("/") && !qRedirect.startsWith("//")) {
+        redirectUrl = qRedirect;
+        try {
+          sessionStorage.setItem("ingage_redirect_after_auth", qRedirect);
+        } catch {}
+      }
+    }
+
+    if (pathname === "/login") {
+      openAuthModal("login", redirectUrl || undefined);
+    } else if (pathname === "/signup") {
+      openAuthModal("signup", redirectUrl || undefined);
+    } else if (pathname === "/forgot-password" || pathname === "/reset-password") {
+      openAuthModal("forgot-password");
     }
   }, [pathname, openAuthModal]);
 
@@ -42,7 +54,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     setTimeout(() => setToastMessage(null), 4000);
   };
 
-  const handleOpenAuth = (mode: "login" | "signup" | "forgot-password" = "login", redirectUrl?: string) => {
+  const handleOpenAuth = (
+    mode: "login" | "signup" | "forgot-password" = "login",
+    redirectUrl?: string
+  ) => {
     openAuthModal(mode, redirectUrl);
   };
 
@@ -92,23 +107,65 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         initialMode={authModalMode}
         onClose={() => {
           closeAuthModal();
-          if (pathname === '/login' || pathname === '/signup' || pathname === '/forgot-password' || pathname === '/reset-password') {
-            navigate('/');
+          if (
+            pathname === "/login" ||
+            pathname === "/signup" ||
+            pathname === "/forgot-password" ||
+            pathname === "/reset-password"
+          ) {
+            let savedRedirect: string | null = null;
+            if (typeof window !== "undefined") {
+              try {
+                savedRedirect = sessionStorage.getItem("ingage_redirect_after_auth");
+              } catch {}
+            }
+            if (
+              savedRedirect &&
+              savedRedirect.startsWith("/") &&
+              !savedRedirect.startsWith("//") &&
+              savedRedirect !== "/login" &&
+              savedRedirect !== "/signup" &&
+              savedRedirect !== "/forgot-password" &&
+              savedRedirect !== "/reset-password"
+            ) {
+              navigate(savedRedirect);
+            } else {
+              navigate("/");
+            }
           }
         }}
         onSuccess={(user) => {
           closeAuthModal();
-          showToast(`Welcome${user?.name ? ', ' + user.name : ''}!`);
-          const savedRedirect = authRedirectUrl || sessionStorage.getItem('ingage_redirect_after_auth');
-          if (savedRedirect && savedRedirect !== '/login' && savedRedirect !== '/signup' && savedRedirect !== '/forgot-password' && savedRedirect !== '/reset-password') {
+          showToast(`Welcome${user?.name ? ", " + user.name : ""}!`);
+          let savedRedirect = authRedirectUrl;
+          if (!savedRedirect && typeof window !== "undefined") {
             try {
-              sessionStorage.removeItem('ingage_redirect_after_auth');
+              savedRedirect = sessionStorage.getItem("ingage_redirect_after_auth");
+            } catch {}
+          }
+
+          if (
+            savedRedirect &&
+            savedRedirect.startsWith("/") &&
+            !savedRedirect.startsWith("//") &&
+            savedRedirect !== "/login" &&
+            savedRedirect !== "/signup" &&
+            savedRedirect !== "/forgot-password" &&
+            savedRedirect !== "/reset-password"
+          ) {
+            try {
+              sessionStorage.removeItem("ingage_redirect_after_auth");
             } catch {}
             navigate(savedRedirect);
-          } else if (user?.role === 'ADMIN') {
-            navigate('/admin');
-          } else if (pathname === '/login' || pathname === '/signup' || pathname === '/forgot-password' || pathname === '/reset-password') {
-            navigate('/');
+          } else if (user?.role === "ADMIN") {
+            navigate("/admin");
+          } else if (
+            pathname === "/login" ||
+            pathname === "/signup" ||
+            pathname === "/forgot-password" ||
+            pathname === "/reset-password"
+          ) {
+            navigate("/");
           }
         }}
         onNavigate={navigate}
@@ -116,3 +173,5 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     </div>
   );
 }
+
+export default AppShell;

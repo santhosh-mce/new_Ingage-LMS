@@ -5,7 +5,7 @@ import CareerDetailPage from "@/views/CareerDetailPage";
 import { useParams, useRouter } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
 
-export default function CareerDetailPageWrapper() {
+export default function CareerPathsPageWrapper() {
   const router = useRouter();
   const params = useParams();
   const { currentUser, openAuthModal } = useAuth();
@@ -31,7 +31,7 @@ export default function CareerDetailPageWrapper() {
       currentUser={currentUser}
       onNavigate={(p: string) => router.push(p)}
       onOpenAuth={(mode?: 'login' | 'signup', redirectUrl?: string) => {
-        openAuthModal(mode || 'login', redirectUrl || `/careers/${slug}`);
+        openAuthModal(mode || 'login', redirectUrl || `/career-paths/${slug}`);
       }}
     />
   );
