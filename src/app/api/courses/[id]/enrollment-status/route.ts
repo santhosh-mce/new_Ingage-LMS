@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { getSessionUser } from "@/lib/auth";
+import { getSessionUser, isAdminRole } from "@/lib/auth";
 
 export async function GET(
   req: Request,
@@ -12,6 +12,17 @@ export async function GET(
 
     if (!user) {
       return NextResponse.json({ enrolled: false, completed: false, progress: 0 });
+    }
+
+    // Role-based bypass for ADMIN: Always allow access
+    if (isAdminRole(user.role)) {
+      return NextResponse.json({
+        enrolled: true,
+        completed: false,
+        progress: 0,
+        isAdminPreview: true,
+        enrolledAt: new Date().toISOString(),
+      });
     }
 
     const numericId = Number(rawId);

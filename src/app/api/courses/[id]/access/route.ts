@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { getSessionUser } from "@/lib/auth";
+import { getSessionUser, isAdminRole } from "@/lib/auth";
 
 export async function GET(
   req: Request,
@@ -14,7 +14,7 @@ export async function GET(
     if (!isNaN(numericId)) {
       course = await prisma.courses.findUnique({
         where: { id: BigInt(numericId) },
-        select: { id: true }
+        select: { id: true, price: true, final_price: true }
       });
     }
 
@@ -27,7 +27,7 @@ export async function GET(
             ...(!isNaN(idFromPrefix) ? [{ id: BigInt(idFromPrefix) }] : []),
           ],
         },
-        select: { id: true }
+        select: { id: true, price: true, final_price: true }
       });
     }
 
@@ -44,8 +44,31 @@ export async function GET(
 
     const courseId = Number(course.id);
     const user = await getSessionUser(req);
-    let hasAccess = false;
-    let accessType: "NONE" | "DIRECT_COURSE" | "CAREER_PATH_INCLUDED" | "BOTH" = "NONE";
+    const isAdmin = user && isAdminRole(user.role);
+
+    // 1. Role-based bypass for ADMIN: Full access to all courses without enrollment or payment
+    if (isAdmin) {
+      return NextResponse.json({
+        courseId,
+        hasAccess: true,
+        accessType: "DIRECT_COURSE",
+        careerPathId: null,
+        careerPathName: null,
+        careerPathSlug: null,
+        directEnrollmentId: null,
+        directStatus: "ACTIVE",
+        progressPercentage: 0,
+        completed: false,
+        certificateAvailable: false,
+        isAdminPreview: true,
+      });
+    }
+
+    // 2. Free course check
+    const isFreeCourse = Number(course.final_price ?? course.price ?? 0) === 0;
+
+    let hasAccess = isFreeCourse;
+    let accessType: "NONE" | "DIRECT_COURSE" | "CAREER_PATH_INCLUDED" | "BOTH" = isFreeCourse ? "DIRECT_COURSE" : "NONE";
     let directEnrollmentId: number | null = null;
     let directStatus: string | null = null;
     let progressPercentage = 0;
@@ -56,7 +79,7 @@ export async function GET(
     let careerPathSlug: string | null = null;
 
     if (user) {
-      // 1. Direct course enrollment check
+      // 3. Direct course enrollment check
       const directEnrollment = await prisma.enrollments.findUnique({
         where: {
           user_id_course_id: {
@@ -76,7 +99,7 @@ export async function GET(
         certificateAvailable = completed;
       }
 
-      // 2. Career path inclusion check
+      // 4. Career path inclusion check
       const careerCourse = await prisma.career_courses.findFirst({
         where: {
           course_id: BigInt(courseId),

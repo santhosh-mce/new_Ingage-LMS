@@ -337,7 +337,7 @@ export function CourseLearnPage({ courseId, onNavigate, onShowToast }: CourseLea
         sectionId: section.id,
         sectionTitle: section.title,
         isCompleted: completedLessonIds.includes(lesson.id),
-        locked: Boolean(lesson.locked),
+        locked: Boolean(authUser?.role?.toUpperCase() !== 'ADMIN' && lesson.locked),
         freePreview: Boolean(lesson.freePreview),
         contentUrl: (lesson as any).contentUrl || (lesson as any).videoUrl || (lesson as any).content_url || null,
         videoUrl: (lesson as any).videoUrl || (lesson as any).contentUrl || (lesson as any).content_url || null,
@@ -358,8 +358,10 @@ export function CourseLearnPage({ courseId, onNavigate, onShowToast }: CourseLea
 
   const activeSection = content?.sections?.[activeSectionIdx] || null;
 
-  const isUserEnrolled = Boolean(content?.isEnrolled || enrollmentStatus?.enrolled || enrollmentStatus?.courseAccess);
-  const canPlayActiveLesson = Boolean(activeLesson && (isUserEnrolled || activeLesson.freePreview));
+  const isAdmin = authUser?.role?.toUpperCase() === 'ADMIN';
+  const isFreeCourse = Boolean((course && Number(course.price) === 0) || (content && Number(content.price) === 0));
+  const isUserEnrolled = Boolean(isAdmin || isFreeCourse || content?.isEnrolled || enrollmentStatus?.enrolled || enrollmentStatus?.courseAccess);
+  const canPlayActiveLesson = Boolean(activeLesson && (isAdmin || isUserEnrolled || activeLesson.freePreview));
   const isLockedForUser = Boolean(activeLesson && !canPlayActiveLesson);
 
   const isCourseFullyCompleted = Boolean(
@@ -2028,7 +2030,7 @@ export function CourseLearnPage({ courseId, onNavigate, onShowToast }: CourseLea
               <div className="flex items-center justify-between pb-3 border-b border-slate-200">
                 <span className="text-xs font-semibold text-slate-500">Access Status</span>
                 <span className="text-xs font-bold text-green-700 bg-green-100 px-2.5 py-0.5 rounded-full border border-green-200">
-                  {isUserEnrolled ? 'Active Lifetime Access' : 'Guest / Free Preview'}
+                  {isAdmin ? 'Administrator Preview (All Lessons Unlocked)' : isUserEnrolled ? 'Active Lifetime Access' : 'Guest / Free Preview'}
                 </span>
               </div>
 

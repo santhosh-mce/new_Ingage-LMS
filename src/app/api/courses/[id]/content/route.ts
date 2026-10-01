@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { serializeData } from "@/lib/utils";
-import { getSessionUser } from "@/lib/auth";
+import { getSessionUser, isAdminRole } from "@/lib/auth";
 
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -54,11 +54,16 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
 
     const courseId = Number(course.id);
     const user = await getSessionUser(req);
+    const isAdmin = user && isAdminRole(user.role);
     let isEnrolled = false;
     let progressPercentage = 0;
     let completedLessonIds: number[] = [];
 
-    if (user) {
+    const isFreeCourse = Number(course.final_price ?? course.price ?? 0) === 0;
+
+    if (isAdmin || isFreeCourse) {
+      isEnrolled = true;
+    } else if (user) {
       const enrollment = await prisma.enrollments.findUnique({
         where: {
           user_id_course_id: {
@@ -88,6 +93,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
             rawContent.includes("localhost:8080"))
             ? "/uploads/videos/video.mp4"
             : rawContent;
+        const isLessonLocked = !(isAdmin || isEnrolled || Boolean(les.free_preview));
         return {
           id: Number(les.id),
           title: les.title,
@@ -99,6 +105,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
           duration: les.duration || "15m",
           durationSeconds: les.duration_seconds || 900,
           freePreview: Boolean(les.free_preview),
+          locked: isLessonLocked,
           displayOrder: les.display_order ?? 0,
           required: Boolean(les.required),
         };
@@ -113,6 +120,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
             rawContent.includes("localhost:8080"))
             ? "/uploads/videos/video.mp4"
             : rawContent;
+        const isLessonLocked = !(isAdmin || isEnrolled || Boolean(les.free_preview));
         return {
           id: Number(les.id),
           title: les.title,
@@ -120,6 +128,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
           duration: les.duration || "15m",
           duration_seconds: les.duration_seconds || 900,
           free_preview: Boolean(les.free_preview),
+          locked: isLessonLocked,
           lesson_type: les.lesson_type || "VIDEO",
           content_url: cleanContent || null,
           video_url: cleanContent || null,

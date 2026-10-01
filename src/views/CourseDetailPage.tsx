@@ -199,7 +199,8 @@ export const CourseDetailPage: React.FC<CourseDetailPageProps> = ({
     });
   };
 
-  const hasAccess = Boolean(course?.isEnrolled || accessDetail?.hasAccess);
+  const isAdmin = currentUser?.role?.toUpperCase() === 'ADMIN';
+  const hasAccess = Boolean(isAdmin || course?.isEnrolled || accessDetail?.hasAccess);
   const isCareerIncludedOnly = accessDetail?.hasAccess && accessDetail?.accessType === 'CAREER_PATH_INCLUDED';
   const careerName = accessDetail?.careerPathName || 'Career Path';
 
@@ -383,7 +384,6 @@ export const CourseDetailPage: React.FC<CourseDetailPageProps> = ({
     );
   }
 
-  const isAdmin = currentUser?.role?.toUpperCase() === 'ADMIN';
   const basePrice = course.finalPrice ?? course.price;
   const isFree = basePrice === 0;
   const currentPayable = appliedCoupon ? appliedCoupon.finalAmount : basePrice;
@@ -529,7 +529,7 @@ export const CourseDetailPage: React.FC<CourseDetailPageProps> = ({
                                   className="px-5 py-3.5 flex items-center justify-between gap-4 hover:bg-gray-50/60 transition-colors"
                                 >
                                   <div className="flex items-center gap-3">
-                                    {lesson.locked ? (
+                                    {lesson.locked && !hasAccess ? (
                                       <div className="w-8 h-8 rounded-lg bg-gray-100 flex items-center justify-center text-gray-400 shrink-0">
                                         <Lock className="w-4 h-4" />
                                       </div>
@@ -749,15 +749,26 @@ export const CourseDetailPage: React.FC<CourseDetailPageProps> = ({
               {/* Action Button: Enroll Now / Buy Now / Start Learning / Manage Course */}
               <div className="pt-2">
                 {isAdmin ? (
-                  <button
-                    id="manage-course-admin-btn"
-                    onClick={() => onNavigate(`/admin/courses/new?id=${course.id}`)}
-                    className="w-full py-4 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-2xl shadow-md hover:shadow-lg transition-all flex items-center justify-center gap-2 cursor-pointer text-sm sm:text-base border border-slate-700"
-                    title="Open course management studio"
-                  >
-                    <Settings className="w-5 h-5 text-green-400" />
-                    <span>Manage Course</span>
-                  </button>
+                  <div className="space-y-3">
+                    <button
+                      id="continue-learning-admin-btn"
+                      onClick={() => onNavigate(`/learn/${course.slug || course.id}`)}
+                      className="w-full py-4 bg-linear-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-bold rounded-2xl shadow-md hover:shadow-lg transition-all flex items-center justify-center gap-2 cursor-pointer text-sm sm:text-base"
+                      title="Continue learning this course as Administrator"
+                    >
+                      <PlayCircle className="w-5 h-5" />
+                      <span>Continue Learning</span>
+                    </button>
+                    <button
+                      id="manage-course-admin-btn"
+                      onClick={() => onNavigate(`/admin/courses/new?id=${course.id}`)}
+                      className="w-full py-3 bg-slate-900 hover:bg-slate-800 text-slate-200 hover:text-white font-semibold rounded-2xl shadow-xs hover:shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer text-xs sm:text-sm border border-slate-700"
+                      title="Open course management studio"
+                    >
+                      <Settings className="w-4 h-4 text-emerald-400" />
+                      <span>Manage Course</span>
+                    </button>
+                  </div>
                 ) : hasAccess ? (
                   <button
                     id="continue-learning-btn"

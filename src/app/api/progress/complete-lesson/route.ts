@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { getSessionUser } from "@/lib/auth";
+import { getSessionUser, isAdminRole } from "@/lib/auth";
 import { serializeData } from "@/lib/utils";
 
 export async function POST(req: Request) {
@@ -28,6 +28,14 @@ export async function POST(req: Request) {
     });
 
     if (!enrollment) {
+      if (user && isAdminRole(user.role)) {
+        return NextResponse.json(serializeData({
+          success: true,
+          progressPercentage: 100,
+          isCompleted: false,
+          isAdminPreview: true,
+        }));
+      }
       return NextResponse.json({ error: "Enrollment not found" }, { status: 404 });
     }
 
