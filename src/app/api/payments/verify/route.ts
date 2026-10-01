@@ -120,7 +120,7 @@ export async function POST(req: Request) {
         discount: order.discount_amount,
         final_amount: order.final_amount,
         currency: "INR",
-        payment_status: "SUCCESS",
+        payment_status: "PAID",
         payment_method: "RAZORPAY",
         razorpay_order_id,
         razorpay_payment_id,
