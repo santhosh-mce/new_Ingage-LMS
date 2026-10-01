@@ -143,6 +143,7 @@ export function CourseLearnPage({ courseId, onNavigate, onShowToast }: CourseLea
 
   // Auto-next countdown state
   const [autoNextCountdown, setAutoNextCountdown] = useState<number | null>(null);
+  const [isVideoEnded, setIsVideoEnded] = useState<boolean>(false);
   const countdownTimerRef = useRef<NodeJS.Timeout | null>(null);
   const lessonContentRef = useRef<HTMLDivElement | null>(null);
 
@@ -364,6 +365,14 @@ export function CourseLearnPage({ courseId, onNavigate, onShowToast }: CourseLea
   const canPlayActiveLesson = Boolean(activeLesson && (isAdmin || isUserEnrolled || activeLesson.freePreview));
   const isLockedForUser = Boolean(activeLesson && !canPlayActiveLesson);
 
+  // Detect if video is in its final 10 seconds (Requirement #1 & #3)
+  const isLast10Seconds = useMemo(() => {
+    if (isVideoEnded) return false;
+    if (!duration || duration <= 10) return false;
+    return currentTime >= duration - 10;
+  }, [currentTime, duration, isVideoEnded]);
+
+
   const isCourseFullyCompleted = Boolean(
     (enrollmentStatus?.completed || enrollmentStatus?.enrollmentStatus === 'COMPLETED' || (enrollmentStatus?.progress || 0) >= 100) ||
     (allLessons.length > 0 && allLessons.every((l) => completedLessonIds.includes(l.id)))
@@ -420,6 +429,7 @@ export function CourseLearnPage({ courseId, onNavigate, onShowToast }: CourseLea
       countdownTimerRef.current = null;
     }
     setAutoNextCountdown(null);
+    setIsVideoEnded(false);
     setVideoError(null);
     setIsPlaying(false);
     setIsVideoLoading(true);
@@ -436,7 +446,7 @@ export function CourseLearnPage({ courseId, onNavigate, onShowToast }: CourseLea
         const posKey = `ingage_video_pos_${courseId}_${activeLesson.id}`;
         const savedPos = localStorage.getItem(posKey);
         const posNum = savedPos ? Number(savedPos) : 0;
-        if (posNum > 15 && !completedLessonIds.includes(activeLesson.id)) {
+        if (posNum > 5 && !completedLessonIds.includes(activeLesson.id)) {
           setResumePromptTime(posNum);
         } else {
           setResumePromptTime(null);
@@ -513,6 +523,12 @@ export function CourseLearnPage({ courseId, onNavigate, onShowToast }: CourseLea
     const dur = videoRef.current.duration || 0;
     setCurrentTime(cur);
     setDuration(dur);
+
+    // Detect natural end of video if within 0.25s of duration
+    if (dur > 0 && cur >= dur - 0.25 && !isVideoEnded) {
+      handleVideoEnded();
+      return;
+    }
 
     // Save playback position locally for immediate resume
     try {
@@ -597,6 +613,74 @@ export function CourseLearnPage({ courseId, onNavigate, onShowToast }: CourseLea
       console.error('Completion error:', err);
     } finally {
       setIsSubmittingCompletion(false);
+    }
+  };
+
+  // Natural video end handler
+  const handleVideoEnded = () => {
+    setIsPlaying(false);
+    setIsVideoEnded(true);
+    const dur = videoRef.current?.duration || duration || 0;
+    if (activeLesson) {
+      handleMarkComplete(false, {
+        watchDuration: dur,
+        duration: dur,
+        currentTime: dur,
+      });
+    }
+  };
+
+  // Reusable unified completion and advance function (Requirement #4 & #9)
+  const handleCompleteAndAdvance = async () => {
+    if (countdownTimerRef.current) {
+      clearInterval(countdownTimerRef.current);
+      countdownTimerRef.current = null;
+    }
+    setAutoNextCountdown(null);
+    setIsVideoEnded(false);
+
+    // 1. Mark current lesson complete idempotently
+    if (activeLesson) {
+      const dur = videoRef.current?.duration || duration || 0;
+      const cur = videoRef.current?.currentTime || currentTime || 0;
+      await handleMarkComplete(false, {
+        watchDuration: dur || cur,
+        duration: dur,
+        currentTime: cur,
+      });
+    }
+
+    // 2. Advance to next lesson if available
+    if (currentIndex < allLessons.length - 1) {
+      const next = allLessons[currentIndex + 1];
+      setActiveLessonId(next.id);
+      dispatch(setReduxActiveLessonId(next.id));
+      setCurrentTime(0);
+      setDuration(0);
+      setIsVideoEnded(false);
+      setIsPlaying(true);
+
+      // Auto expand next section in accordion
+      if (next.sectionId) {
+        setExpandedSections((prev) => ({
+          ...prev,
+          [next.sectionId]: true,
+        }));
+      }
+
+      // Auto play next video
+      setTimeout(() => {
+        if (videoRef.current) {
+          videoRef.current.currentTime = 0;
+          videoRef.current.play().then(() => setIsPlaying(true)).catch(() => {});
+        }
+      }, 150);
+    } else {
+      // Course completed
+      setIsVideoEnded(true);
+      if (onShowToast) {
+        onShowToast('🎉 Congratulations! You have completed all lessons in this course!', 'success');
+      }
     }
   };
 
@@ -1104,6 +1188,7 @@ export function CourseLearnPage({ courseId, onNavigate, onShowToast }: CourseLea
                         disablePictureInPicture={false}
                         playsInline
                         onTimeUpdate={handleTimeUpdate}
+                        onEnded={handleVideoEnded}
                         onPlay={() => setIsPlaying(true)}
                         onPause={() => setIsPlaying(false)}
                         onLoadStart={() => setIsVideoLoading(true)}
@@ -1152,6 +1237,104 @@ export function CourseLearnPage({ courseId, onNavigate, onShowToast }: CourseLea
                           >
                             Retry
                           </button>
+                        </div>
+                      )}
+
+                                            {/* Last 10 Seconds Center Skip Overlay (Requirement #1 & #3) */}
+                      {isLast10Seconds && !isVideoEnded && (
+                        <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-25 animate-in fade-in zoom-in-95 duration-200">
+                          <button
+                            type="button"
+                            id="skip-to-next-lesson-center-btn"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleCompleteAndAdvance();
+                            }}
+                            className="pointer-events-auto group px-6 sm:px-7 py-3 sm:py-3.5 bg-green-600/95 hover:bg-green-500 text-white font-bold rounded-2xl shadow-2xl backdrop-blur-md border border-white/20 flex items-center gap-2.5 transition-all hover:scale-105 active:scale-95 cursor-pointer text-xs sm:text-sm tracking-wide"
+                            title="Skip to next lesson and mark current lesson completed"
+                          >
+                            <span>Skip to Next Lesson</span>
+                            <ArrowRight className="w-4 h-4 sm:w-5 sm:h-5 transition-transform group-hover:translate-x-1" />
+                          </button>
+                        </div>
+                      )}
+
+                      {/* Video Finished Center Overlay (Requirement #2 & #4) */}
+                      {isVideoEnded && (
+                        <div className="absolute inset-0 bg-black/85 backdrop-blur-xs flex flex-col items-center justify-center p-6 text-center z-30 animate-in fade-in duration-300">
+                          {currentIndex < allLessons.length - 1 ? (
+                            <>
+                              <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-green-500/20 border border-green-500/40 flex items-center justify-center text-green-400 mb-3 shadow-lg">
+                                <CheckCircle2 className="w-7 h-7 sm:w-8 sm:h-8" />
+                              </div>
+                              <span className="text-xs font-semibold uppercase tracking-wider text-green-400 mb-1">
+                                ✓ Lesson Completed
+                              </span>
+                              <h3 className="text-white font-bold text-lg sm:text-xl max-w-md line-clamp-1 mb-1">
+                                {activeLesson.title}
+                              </h3>
+                              <p className="text-slate-400 text-xs sm:text-sm max-w-sm mb-5">
+                                Ready for the next lesson? Up next:{' '}
+                                <span className="text-slate-200 font-medium">
+                                  {allLessons[currentIndex + 1]?.title}
+                                </span>
+                              </p>
+
+                              <div className="flex flex-col sm:flex-row items-center gap-3">
+                                <button
+                                  type="button"
+                                  id="play-next-lesson-center-btn"
+                                  onClick={handleCompleteAndAdvance}
+                                  className="px-7 py-3.5 bg-green-600 hover:bg-green-500 text-white font-bold rounded-2xl shadow-xl hover:shadow-green-500/20 transition-all flex items-center gap-2.5 text-sm sm:text-base cursor-pointer hover:scale-105 active:scale-95"
+                                >
+                                  <Play className="w-4 h-4 sm:w-5 sm:h-5 fill-white" />
+                                  <span>Play Next Lesson →</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={handleStartFromBeginning}
+                                  className="px-4 py-3 bg-white/10 hover:bg-white/20 text-slate-300 hover:text-white font-semibold rounded-2xl transition text-xs sm:text-sm cursor-pointer flex items-center gap-1.5"
+                                >
+                                  <RotateCcw className="w-3.5 h-3.5" />
+                                  <span>Replay Lesson</span>
+                                </button>
+                              </div>
+                            </>
+                          ) : (
+                            <>
+                              <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-3xl bg-amber-500/20 border border-amber-500/30 flex items-center justify-center text-amber-400 mb-3 shadow-xl">
+                                <Award className="w-9 h-9 sm:w-10 sm:h-10 text-amber-400" />
+                              </div>
+                              <span className="text-xs font-semibold uppercase tracking-wider text-amber-400 mb-1">
+                                🎉 Course Completed
+                              </span>
+                              <h3 className="text-white font-bold text-xl sm:text-2xl max-w-lg mb-2">
+                                You have completed all lessons in this course!
+                              </h3>
+                              <p className="text-slate-300 text-xs sm:text-sm max-w-md mb-6">
+                                Great achievement! All curriculum modules, lessons, and assignments have been finished.
+                              </p>
+
+                              <div className="flex flex-col sm:flex-row items-center gap-3">
+                                <button
+                                  type="button"
+                                  onClick={() => setActiveTab('reports')}
+                                  className="px-6 py-3.5 bg-green-600 hover:bg-green-500 text-white font-bold rounded-2xl shadow-xl transition-all flex items-center gap-2 text-sm cursor-pointer hover:scale-105"
+                                >
+                                  <Award className="w-4 h-4" />
+                                  <span>View Certificate & Reports</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={handleStartFromBeginning}
+                                  className="px-4 py-3 bg-white/10 hover:bg-white/20 text-slate-300 hover:text-white font-semibold rounded-2xl transition text-xs sm:text-sm cursor-pointer flex items-center gap-1.5"
+                                >
+                                  <RotateCcw className="w-3.5 h-3.5" />
+                                  <span>Replay Lesson</span>
+                                </button>
+                              </div>
+                            </>
+                          )}
                         </div>
                       )}
 
@@ -1587,7 +1770,7 @@ export function CourseLearnPage({ courseId, onNavigate, onShowToast }: CourseLea
 
                 <button
                   type="button"
-                  onClick={handleNextLesson}
+                  onClick={handleCompleteAndAdvance}
                   disabled={currentIndex >= allLessons.length - 1}
                   className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold bg-green-600 hover:bg-green-700 text-white disabled:opacity-30 disabled:cursor-not-allowed transition cursor-pointer shadow-xs"
                 >
@@ -1605,7 +1788,7 @@ export function CourseLearnPage({ courseId, onNavigate, onShowToast }: CourseLea
                   </div>
                   <button
                     type="button"
-                    onClick={handleNextLesson}
+                    onClick={handleCompleteAndAdvance}
                     className="px-3.5 py-1.5 bg-green-600 hover:bg-green-700 text-white rounded-lg font-bold text-xs cursor-pointer shadow-xs transition"
                   >
                     Continue to Next Lesson
