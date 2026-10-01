@@ -56,6 +56,7 @@ export function CredentialCourseDetailPage({
 }: CredentialCourseDetailPageProps) {
   const { user: authUser } = useAppSelector((state) => state.auth);
   const currentUser = propUser || authUser;
+  const isAdmin = currentUser?.role?.toUpperCase() === 'ADMIN';
 
   const [course, setCourse] = useState<CredentialCourseDto | null>(null);
   const [weeklyProgress, setWeeklyProgress] = useState<CredentialCourseProgressDto | null>(null);
@@ -103,6 +104,12 @@ export function CredentialCourseDetailPage({
 
     if (!course) return;
 
+    if (isAdmin) {
+      if (onShowToast) onShowToast('Administrators cannot enroll in or purchase credentials. Redirecting to admin studio...');
+      onNavigate('/admin/credential-edge');
+      return;
+    }
+
     // If paid course and not enrolled, launch payment
     if (!course.free && (course.price || 0) > 0 && !course.enrolled) {
       handlePaidCheckout();
@@ -146,6 +153,11 @@ export function CredentialCourseDetailPage({
 
   const handlePaidCheckout = async () => {
     if (!course) return;
+    if (isAdmin) {
+      if (onShowToast) onShowToast('Administrators cannot purchase courses.');
+      onNavigate('/admin/credential-edge');
+      return;
+    }
     setActionLoading(true);
 
     try {
@@ -154,11 +166,11 @@ export function CredentialCourseDetailPage({
 
       const options = {
         key: razorpayKey,
-        amount: order.amount,
+        amount: order.amountInPaise || Math.round((order.amount || 0) * 100),
         currency: order.currency || 'INR',
         name: 'InGage LMS',
         description: course.title,
-        order_id: order.orderId,
+        order_id: order.razorpayOrderId || order.orderId,
         handler: async (response: any) => {
           try {
             await verifyPayment({
@@ -302,7 +314,7 @@ export function CredentialCourseDetailPage({
   } else if (isEnrolled) {
     continueButtonText = 'Continue Learning';
   } else if (!course.free && (course.price || 0) > 0) {
-    continueButtonText = `Enroll for ₹${course.price}`;
+    continueButtonText = isAdmin ? 'Manage Credential Edge' : `Enroll for ₹${course.price}`;
   }
 
   // Flattened weekly skills list for the 8-step timeline

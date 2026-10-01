@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { getAuthUser } from "@/lib/auth";
+import { getAuthUser, isAdminRole } from "@/lib/auth";
 import Razorpay from "razorpay";
 
 export async function POST(req: Request) {
@@ -8,6 +8,18 @@ export async function POST(req: Request) {
     const authUser = await getAuthUser(req);
     if (!authUser || !authUser.userId) {
       return NextResponse.json({ error: "Authentication required" }, { status: 401 });
+    }
+
+    // Role-based block: Administrators MUST NOT purchase career tracks
+    if (isAdminRole(authUser.role)) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Administrators cannot purchase career tracks.",
+          message: "Administrators cannot purchase career tracks.",
+        },
+        { status: 403 }
+      );
     }
 
     const body = await req.json();

@@ -101,3 +101,14 @@ export async function getAuthUser(req?: Request) {
     userId: user.id,
   };
 }
+
+export function isAdminRole(role?: string | null): boolean {
+  if (!role) return false;
+  const upper = role.toUpperCase().trim();
+  return ["ADMIN", "ROLE_ADMIN", "SUPER_ADMIN", "ADMINISTRATOR"].includes(upper);
+}
+
+export function isStudentRole(role?: string | null): boolean {
+  if (!role) return true;
+  return !isAdminRole(role);
+}

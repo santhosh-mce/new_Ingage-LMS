@@ -13,6 +13,10 @@ interface CourseCardProps {
 export function CourseCard({ course, onViewCourse }: CourseCardProps) {
   const [imageError, setImageError] = useState(false);
 
+  const effectiveFinalPrice = (course as any).finalPrice ?? (course as any).final_price;
+  const displayFinalPrice = effectiveFinalPrice !== undefined && effectiveFinalPrice !== null ? Number(effectiveFinalPrice) : Number(course.price);
+  const hasDiscount = displayFinalPrice < Number(course.price) && displayFinalPrice >= 0;
+
   const formatPrice = (price: number) => {
     return new Intl.NumberFormat('en-IN', {
       style: 'currency',
@@ -110,9 +114,16 @@ export function CourseCard({ course, onViewCourse }: CourseCardProps) {
         <div className="flex items-center justify-between pt-1 mt-auto">
           <div>
             <span className="text-xs uppercase tracking-wider text-gray-400 font-medium block">Price</span>
-            <span className="text-lg font-bold text-gray-900 tracking-tight">
-              {formatPrice(course.price)}
-            </span>
+            <div className="flex items-baseline gap-2">
+              <span className="text-lg font-bold text-gray-900 tracking-tight">
+                {displayFinalPrice === 0 ? 'Free' : formatPrice(displayFinalPrice)}
+              </span>
+              {hasDiscount && (
+                <span className="text-xs text-slate-400 line-through">
+                  {formatPrice(course.price)}
+                </span>
+              )}
+            </div>
           </div>
 
           <button

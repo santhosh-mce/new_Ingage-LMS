@@ -48,6 +48,7 @@ interface CareerDetailPageProps {
 }
 
 export function CareerDetailPage({
+
   roleId,
   onNavigate,
   currentUser: propUser,
@@ -57,6 +58,7 @@ export function CareerDetailPage({
   const dispatch = useAppDispatch();
   const { user: authUser } = useAppSelector((state) => state.auth);
   const currentUser = propUser || authUser;
+  const isAdmin = currentUser?.role?.toUpperCase() === 'ADMIN';
 
   const { selectedCareer: career, detailLoading: loading, error } = useAppSelector(
     (state) => state.career
@@ -112,6 +114,12 @@ export function CareerDetailPage({
       return;
     }
 
+    if (isAdmin) {
+      if (onShowToast) onShowToast('Administrators cannot purchase courses. Redirecting to course studio...');
+      onNavigate(`/admin/courses/new?id=${c.courseId}`);
+      return;
+    }
+
     // 3. If logged in + not enrolled -> Trigger Razorpay checkout
     try {
       setPurchasingCourseId(c.courseId);
@@ -136,11 +144,11 @@ export function CareerDetailPage({
 
       const options = {
         key: (orderRes.keyId || 'rzp_test_TccoJ6A0ra1dCg').trim(),
-        amount: orderRes.amountInPaise,
+        amount: orderRes.amountInPaise || Math.round((orderRes.amount || 0) * 100),
         currency: orderRes.currency || 'INR',
         name: 'Ingage LMS',
         description: `Enrollment: ${c.courseTitle}`,
-        order_id: (orderRes.razorpayOrderId || '').trim(),
+        order_id: (orderRes.razorpayOrderId || (orderRes as any).orderId || '').toString().trim(),
         prefill: {
           name: currentUser.name,
           email: currentUser.email,
@@ -454,6 +462,14 @@ export function CareerDetailPage({
       return;
     }
 
+    if (isAdmin) {
+      if (onShowToast) {
+        onShowToast('Administrators cannot purchase or enroll in career tracks. Redirecting to admin studio...');
+      }
+      onNavigate('/admin/careers');
+      return;
+    }
+
     if (isEnrolledInCareer || isCareerCompleted) {
       if (onShowToast) {
         onShowToast(`You are enrolled in ${career?.title || 'this program'}. Resuming learning...`);
@@ -492,11 +508,11 @@ export function CareerDetailPage({
 
       const options = {
         key: (orderRes.keyId || 'rzp_test_TccoJ6A0ra1dCg').trim(),
-        amount: orderRes.amountInPaise,
+        amount: orderRes.amountInPaise || Math.round((orderRes.amount || 0) * 100),
         currency: orderRes.currency || 'INR',
         name: 'InGage LMS',
         description: `Enrollment: ${career.title} Career Path`,
-        order_id: (orderRes.razorpayOrderId || '').trim(),
+        order_id: (orderRes.razorpayOrderId || (orderRes as any).orderId || '').toString().trim(),
         prefill: {
           name: currentUser.name,
           email: currentUser.email,
@@ -683,6 +699,8 @@ export function CareerDetailPage({
                     </>
                   ) : !currentUser ? (
                     'Buy Now'
+                  ) : isAdmin ? (
+                    'Manage Career Track'
                   ) : isCareerCompleted ? (
                     'Program Completed'
                   ) : isEnrolledInCareer ? (

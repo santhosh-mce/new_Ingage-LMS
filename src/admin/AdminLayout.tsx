@@ -28,6 +28,31 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
 
+  const isAdmin = currentUser?.role?.toUpperCase() === 'ADMIN';
+
+  // Role-based route guard: Students cannot access the admin management panel
+  if (currentUser && !isAdmin) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
+        <div className="max-w-md w-full bg-white rounded-2xl border border-slate-200 p-8 text-center shadow-lg space-y-4">
+          <div className="w-12 h-12 rounded-full bg-rose-100 text-rose-600 flex items-center justify-center mx-auto font-bold text-xl">
+            ✕
+          </div>
+          <h2 className="text-xl font-bold text-slate-900">Access Denied</h2>
+          <p className="text-sm text-slate-600">
+            You do not have administrative privileges to access this area.
+          </p>
+          <button
+            onClick={() => onNavigate('/')}
+            className="w-full py-2.5 px-4 bg-green-600 hover:bg-green-700 text-white font-bold rounded-xl transition cursor-pointer"
+          >
+            Return to Homepage
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   const formatBreadcrumb = (path: string) => {
     const clean = path.replace('/admin', '').replace(/^\//, '');
     if (!clean || clean === 'dashboard') return 'Dashboard';

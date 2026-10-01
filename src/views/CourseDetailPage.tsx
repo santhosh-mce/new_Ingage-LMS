@@ -1,8 +1,10 @@
 "use client";
-import { formatDurationHuman, formatDurationMMSS, parseDurationToSeconds } from "@/lib/duration";
+import {
+  formatDurationHuman, formatDurationMMSS, parseDurationToSeconds } from "@/lib/duration";
 import React, { useState, useEffect } from 'react';
 import {
   ArrowLeft,
+  Settings,
   Clock,
   User,
   Shield,
@@ -215,6 +217,12 @@ export const CourseDetailPage: React.FC<CourseDetailPageProps> = ({
 
     if (!course) return;
 
+    if (currentUser?.role?.toUpperCase() === 'ADMIN') {
+      if (onShowToast) onShowToast('Administrators cannot purchase courses.', 'info');
+      onNavigate(`/admin/courses/new?id=${course.id}`);
+      return;
+    }
+
     if (hasAccess || course.isEnrolled) {
       onNavigate(`/learn/${course.slug || course.id}`);
       return;
@@ -256,11 +264,11 @@ export const CourseDetailPage: React.FC<CourseDetailPageProps> = ({
 
       const options = {
         key: (orderRes.keyId || 'rzp_test_TccoJ6A0ra1dCg').trim(),
-        amount: orderRes.amountInPaise,
+        amount: orderRes.amountInPaise || Math.round((orderRes.amount || 0) * 100),
         currency: orderRes.currency || 'INR',
         name: 'Ingage LMS',
         description: `Enrollment: ${course.title}`,
-        order_id: (orderRes.razorpayOrderId || '').trim(),
+        order_id: (orderRes.razorpayOrderId || (orderRes as any).orderId || '').toString().trim(),
         prefill: {
           name: currentUser.name,
           email: currentUser.email,
@@ -375,6 +383,7 @@ export const CourseDetailPage: React.FC<CourseDetailPageProps> = ({
     );
   }
 
+  const isAdmin = currentUser?.role?.toUpperCase() === 'ADMIN';
   const basePrice = course.finalPrice ?? course.price;
   const isFree = basePrice === 0;
   const currentPayable = appliedCoupon ? appliedCoupon.finalAmount : basePrice;
@@ -671,8 +680,8 @@ export const CourseDetailPage: React.FC<CourseDetailPageProps> = ({
                 )}
               </div>
 
-              {/* Coupon Input Box (Only for paid & not enrolled/included) */}
-              {!isFree && !hasAccess && (
+              {/* Coupon Input Box (Only for paid & not enrolled/included, not admin) */}
+              {!isAdmin && !isFree && !hasAccess && (
                 <div className="pt-2">
                   <label htmlFor="course-coupon-input" className="text-xs font-bold text-gray-700 flex items-center gap-1 mb-2">
                     <Tag className="w-3.5 h-3.5 text-lime-600" />
@@ -737,9 +746,19 @@ export const CourseDetailPage: React.FC<CourseDetailPageProps> = ({
                 </div>
               )}
 
-              {/* Action Button: Enroll Now / Buy Now / Start Learning */}
+              {/* Action Button: Enroll Now / Buy Now / Start Learning / Manage Course */}
               <div className="pt-2">
-                {hasAccess ? (
+                {isAdmin ? (
+                  <button
+                    id="manage-course-admin-btn"
+                    onClick={() => onNavigate(`/admin/courses/new?id=${course.id}`)}
+                    className="w-full py-4 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-2xl shadow-md hover:shadow-lg transition-all flex items-center justify-center gap-2 cursor-pointer text-sm sm:text-base border border-slate-700"
+                    title="Open course management studio"
+                  >
+                    <Settings className="w-5 h-5 text-green-400" />
+                    <span>Manage Course</span>
+                  </button>
+                ) : hasAccess ? (
                   <button
                     id="continue-learning-btn"
                     onClick={() => onNavigate(`/learn/${course.slug || course.id}`)}
@@ -785,6 +804,13 @@ export const CourseDetailPage: React.FC<CourseDetailPageProps> = ({
                   </button>
                 )}
               </div>
+
+              {isAdmin && (
+                <div className="p-3 bg-amber-50 border border-amber-200/80 rounded-xl text-xs text-amber-900 flex items-center gap-2.5">
+                  <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
+                  <span>Logged in as an <strong>Administrator</strong>. Course purchasing is restricted for admin accounts.</span>
+                </div>
+              )}
 
               {/* Value Props Bullet Points */}
               <div className="pt-4 border-t border-gray-100 space-y-3">
