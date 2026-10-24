@@ -19,6 +19,8 @@ import {
   Briefcase,
   Star,
   CheckCircle,
+  Users,
+  BookOpen,
 } from 'lucide-react';
 import { AuthMode, UserProfile } from '../types';
 import {
@@ -30,6 +32,7 @@ import {
 import { useAppDispatch } from '../store/hooks';
 import { setCredentials } from '../store/slices/authSlice';
 import { SuccessModal } from './SuccessModal';
+import { BrandLogo } from './brand/BrandLogo';
 
 // ---------------------------------------------------------------------------
 // Step Type Definitions
@@ -40,6 +43,7 @@ type LoginStep = 'LOGIN_FORM' | 'FORGOT_PASSWORD' | 'RESET_SUCCESS';
 interface AuthModalProps {
   isOpen: boolean;
   initialMode?: AuthMode;
+  portalRole?: 'STUDENT' | 'ADMIN';
   onClose: () => void;
   onSuccess: (user: UserProfile) => void;
   onNavigate?: (path: string) => void;
@@ -48,10 +52,16 @@ interface AuthModalProps {
 export function AuthModal({
   isOpen,
   initialMode = 'signup',
+  portalRole: propPortalRole,
   onClose,
   onSuccess,
   onNavigate,
 }: AuthModalProps) {
+  // Portal Role (STUDENT vs ADMIN)
+  const [portalRole, setPortalRole] = useState<'STUDENT' | 'ADMIN'>(
+    propPortalRole || 'STUDENT'
+  );
+
   // Mode & Step
   const [mode, setMode] = useState<'login' | 'signup'>(
     initialMode === 'login' ? 'login' : 'signup'
@@ -105,6 +115,29 @@ export function AuthModal({
   // Reset or initialize state when modal opens or initialMode changes
   useEffect(() => {
     if (isOpen) {
+      if (propPortalRole) {
+        setPortalRole(propPortalRole);
+      } else if (typeof window !== 'undefined') {
+        const sp = new URLSearchParams(window.location.search);
+        const rParam = (sp.get('role') || sp.get('portal') || '').toLowerCase();
+        const red = sp.get('redirect') || '';
+        let savedRed = '';
+        try {
+          savedRed = sessionStorage.getItem('ingage_redirect_after_auth') || '';
+        } catch {}
+
+        if (
+          rParam === 'admin' ||
+          red.startsWith('/admin') ||
+          savedRed.startsWith('/admin') ||
+          window.location.pathname.startsWith('/admin')
+        ) {
+          setPortalRole('ADMIN');
+        } else {
+          setPortalRole('STUDENT');
+        }
+      }
+
       if (initialMode === 'login') {
         setMode('login');
         setLoginStep('LOGIN_FORM');
@@ -118,7 +151,7 @@ export function AuthModal({
       setError(null);
       setSuccessBanner(null);
     }
-  }, [isOpen, initialMode]);
+  }, [isOpen, initialMode, propPortalRole]);
 
   // Lock body scroll while modal is visible
   useEffect(() => {
@@ -210,7 +243,7 @@ export function AuthModal({
           title: 'Create Account',
           subtitle: 'Account created successfully',
           successTitle: 'Account Created!',
-          message: 'Welcome to Ingage LMS. Setting up your dashboard...',
+          message: 'Welcome to InGage EduTech. Setting up your dashboard...',
           user,
         });
 
@@ -273,7 +306,7 @@ export function AuthModal({
           title: 'Welcome Back!',
           subtitle: 'Great to see you again',
           successTitle: 'Login Successful!',
-          message: 'Welcome back to Ingage LMS. Setting up your dashboard...',
+          message: 'Welcome back to InGage EduTech. Setting up your dashboard...',
           user,
         });
 
@@ -333,7 +366,7 @@ export function AuthModal({
   // 4. Social Auth
   // ---------------------------------------------------------------------------
   const handleSocialAuth = (provider: 'Google' | 'LinkedIn') => {
-    const backendBase = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
+    const backendBase = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
     if (provider === 'Google') {
       window.location.href = `${backendBase}/oauth2/authorization/google`;
     } else {
@@ -412,23 +445,70 @@ export function AuthModal({
           <div className="w-full md:w-[54%] lg:w-[55%] flex flex-col bg-white p-6 sm:p-8 lg:p-10 overflow-y-auto max-h-[92vh] md:max-h-[88vh]">
             {/* Header */}
             <div className="mb-5 sm:mb-6">
+              <div className="flex items-center justify-between gap-3 mb-3">
+                <BrandLogo
+                  role={portalRole}
+                  variant="horizontal"
+                  theme="light"
+                />
+                <span
+                  className={`text-[10px] font-black uppercase tracking-wider px-2.5 py-1 rounded-full ${
+                    portalRole === 'ADMIN'
+                      ? 'bg-blue-100 text-blue-800 border border-blue-200'
+                      : 'bg-emerald-100 text-emerald-800 border border-emerald-200'
+                  }`}
+                >
+                  {portalRole === 'ADMIN' ? 'ADMIN PORTAL' : 'STUDENT PORTAL'}
+                </span>
+              </div>
+
+              {/* Portal Toggle Pill Switch */}
+              <div className="flex items-center p-1 bg-slate-100/90 rounded-xl border border-slate-200/80 mb-4">
+                <button
+                  type="button"
+                  onClick={() => setPortalRole('STUDENT')}
+                  className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                    portalRole === 'STUDENT'
+                      ? 'bg-white text-emerald-700 shadow-xs border border-emerald-100'
+                      : 'text-slate-500 hover:text-slate-900'
+                  }`}
+                >
+                  Student Portal
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPortalRole('ADMIN')}
+                  className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                    portalRole === 'ADMIN'
+                      ? 'bg-white text-blue-700 shadow-xs border border-blue-100'
+                      : 'text-slate-500 hover:text-slate-900'
+                  }`}
+                >
+                  Admin Portal
+                </button>
+              </div>
+
               <h1 id="auth-modal-title" className="text-2xl sm:text-3xl font-extrabold text-gray-900 tracking-tight">
                 {mode === 'signup'
-                  ? 'Sign Up'
+                  ? 'Create Student Account'
                   : loginStep === 'FORGOT_PASSWORD'
-                  ? 'Reset Password'
-                  : loginStep === 'RESET_SUCCESS'
-                  ? 'Password Updated'
-                  : 'Sign In'}
+                    ? 'Reset Password'
+                    : loginStep === 'RESET_SUCCESS'
+                      ? 'Password Updated'
+                      : portalRole === 'ADMIN'
+                        ? 'Admin Sign In'
+                        : 'Student Sign In'}
               </h1>
-              <p id="auth-modal-subtitle" className="text-xs sm:text-sm text-gray-500 mt-1.5 leading-relaxed">
+              <p id="auth-modal-subtitle" className="text-xs sm:text-sm text-gray-500 mt-1.5 leading-relaxed font-medium">
                 {mode === 'signup'
-                  ? 'Start your learning journey with InGage LMS today.'
+                  ? 'Start your learning journey with InGage EduTech today.'
                   : loginStep === 'FORGOT_PASSWORD'
-                  ? 'Enter your registered email and choose a new password.'
-                  : loginStep === 'RESET_SUCCESS'
-                  ? 'Your account credentials have been updated.'
-                  : 'Please enter your account details to access your dashboard.'}
+                    ? 'Enter your registered email and choose a new password.'
+                    : loginStep === 'RESET_SUCCESS'
+                      ? 'Your account credentials have been updated.'
+                      : portalRole === 'ADMIN'
+                        ? 'Manage · Monitor · Grow — Enter your administrator credentials.'
+                        : 'Learn · Build · Grow — Enter your student credentials to access your dashboard.'}
               </p>
             </div>
 
@@ -824,7 +904,11 @@ export function AuthModal({
                         id="login-submit-btn"
                         type="submit"
                         disabled={isLoading}
-                        className="w-full mt-2 py-3 px-4 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 active:from-emerald-800 active:to-teal-800 text-white font-semibold text-sm shadow-md hover:shadow-lg transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                        className={`w-full mt-2 py-3 px-4 rounded-xl text-white font-semibold text-sm shadow-md hover:shadow-lg transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 ${
+                          portalRole === 'ADMIN'
+                            ? 'bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 active:from-blue-800'
+                            : 'bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 active:from-emerald-800 active:to-teal-800'
+                        }`}
                       >
                         {isLoading ? (
                           <>
@@ -833,7 +917,7 @@ export function AuthModal({
                           </>
                         ) : (
                           <>
-                            <span>Login</span>
+                            <span>{portalRole === 'ADMIN' ? 'Sign In as Admin' : 'Sign In as Student'}</span>
                             <ArrowRight className="w-4 h-4" />
                           </>
                         )}
@@ -1036,29 +1120,104 @@ export function AuthModal({
           {/* ================================================================= */}
           {/* RIGHT SECTION: MODERN WELCOME PANEL */}
           {/* ================================================================= */}
-          <div className="w-full md:w-[46%] lg:w-[45%] bg-gradient-to-br from-[#064e3b] via-[#047857] to-[#022c22] text-white p-6 sm:p-8 lg:p-10 flex flex-col justify-between relative overflow-hidden">
+          <div
+            className={`w-full md:w-[46%] lg:w-[45%] text-white p-6 sm:p-8 lg:p-10 flex flex-col justify-between relative overflow-hidden transition-all duration-500 ${
+              portalRole === 'ADMIN'
+                ? 'bg-gradient-to-br from-[#0F172A] via-[#1E3A8A] to-[#1D4ED8]'
+                : 'bg-gradient-to-br from-[#064e3b] via-[#047857] to-[#022c22]'
+            }`}
+          >
             {/* Background Glow Accents */}
-            <div className="absolute -top-20 -right-20 w-64 h-64 rounded-full bg-emerald-400/20 blur-3xl pointer-events-none" />
-            <div className="absolute -bottom-20 -left-20 w-64 h-64 rounded-full bg-teal-400/15 blur-3xl pointer-events-none" />
+            <div
+              className={`absolute -top-20 -right-20 w-64 h-64 rounded-full blur-3xl pointer-events-none ${
+                portalRole === 'ADMIN' ? 'bg-blue-400/20' : 'bg-emerald-400/20'
+              }`}
+            />
+            <div
+              className={`absolute -bottom-20 -left-20 w-64 h-64 rounded-full blur-3xl pointer-events-none ${
+                portalRole === 'ADMIN' ? 'bg-indigo-400/15' : 'bg-teal-400/15'
+              }`}
+            />
 
             {/* Top Branding Badge */}
             <div className="relative z-10">
-              <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/10 backdrop-blur-md border border-white/15 text-emerald-200 text-xs font-medium">
-                <Sparkles className="w-3.5 h-3.5 text-emerald-300" />
-                <span>InGage LMS • Career Platform</span>
+              <div
+                className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/10 backdrop-blur-md border border-white/15 text-xs font-semibold ${
+                  portalRole === 'ADMIN' ? 'text-blue-200' : 'text-emerald-200'
+                }`}
+              >
+                <Sparkles
+                  className={`w-3.5 h-3.5 ${
+                    portalRole === 'ADMIN' ? 'text-blue-300' : 'text-emerald-300'
+                  }`}
+                />
+                <span>
+                  {portalRole === 'ADMIN'
+                    ? 'InGage EduTech • ADMIN PORTAL'
+                    : 'InGage EduTech • STUDENT PORTAL'}
+                </span>
               </div>
             </div>
 
             {/* Middle Welcome Content */}
             <div className="relative z-10 my-8 sm:my-10 space-y-6">
-              {mode === 'login' ? (
+              {portalRole === 'ADMIN' ? (
                 <>
                   <div>
                     <h2 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">
-                      Welcome Back!
+                      Admin Portal
                     </h2>
+                    <p className="text-xs font-bold text-blue-200 uppercase tracking-widest mt-1">
+                      Manage · Monitor · Grow
+                    </p>
+                    <p className="text-sm text-blue-100/90 leading-relaxed mt-3">
+                      Executive LMS control center for curriculum management, student cohort tracking, and institutional governance.
+                    </p>
+                  </div>
+
+                  <div className="space-y-3.5 pt-2">
+                    <div className="flex items-start gap-3">
+                      <div className="w-7 h-7 rounded-lg bg-blue-500/20 border border-blue-400/30 flex items-center justify-center shrink-0 mt-0.5">
+                        <ShieldCheck className="w-4 h-4 text-blue-200" />
+                      </div>
+                      <div>
+                        <h4 className="text-xs sm:text-sm font-semibold text-white">Platform Governance</h4>
+                        <p className="text-[11px] sm:text-xs text-blue-100/70">Centralized control of users, permissions, and security policies.</p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-start gap-3">
+                      <div className="w-7 h-7 rounded-lg bg-blue-500/20 border border-blue-400/30 flex items-center justify-center shrink-0 mt-0.5">
+                        <Users className="w-4 h-4 text-blue-200" />
+                      </div>
+                      <div>
+                        <h4 className="text-xs sm:text-sm font-semibold text-white">Cohort Progress Tracking</h4>
+                        <p className="text-[11px] sm:text-xs text-blue-100/70">Real-time telemetry on student completion, quizzes, and projects.</p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-start gap-3">
+                      <div className="w-7 h-7 rounded-lg bg-blue-500/20 border border-blue-400/30 flex items-center justify-center shrink-0 mt-0.5">
+                        <BookOpen className="w-4 h-4 text-blue-200" />
+                      </div>
+                      <div>
+                        <h4 className="text-xs sm:text-sm font-semibold text-white">Curriculum & Video Modules</h4>
+                        <p className="text-[11px] sm:text-xs text-blue-100/70">Author and deploy accredited learning tracks and masterclasses.</p>
+                      </div>
+                    </div>
+                  </div>
+                </>
+              ) : mode === 'login' ? (
+                <>
+                  <div>
+                    <h2 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">
+                      Student Portal
+                    </h2>
+                    <p className="text-xs font-bold text-emerald-200 uppercase tracking-widest mt-1">
+                      Learn · Build · Grow
+                    </p>
                     <p className="text-sm text-emerald-100/90 leading-relaxed mt-3">
-                      Continue your learning journey with InGage. Build skills, explore career paths, and grow your professional future.
+                      Continue your learning journey with InGage EduTech. Build skills, explore career paths, and grow your professional future.
                     </p>
                   </div>
 
@@ -1134,7 +1293,7 @@ export function AuthModal({
                       Start Learning
                     </h2>
                     <p className="text-sm text-emerald-100/90 leading-relaxed mt-3">
-                      Build your skills with InGage LMS. Gain industry-recognized credentials and accelerate your tech career.
+                      Build your skills with InGage EduTech. Gain industry-recognized credentials and accelerate your tech career.
                     </p>
                   </div>
 
@@ -1180,8 +1339,14 @@ export function AuthModal({
                   <Star key={i} className="w-3.5 h-3.5 fill-current" />
                 ))}
               </div>
-              <span className="text-[11px] sm:text-xs text-emerald-200/80 font-medium">
-                10,000+ Learners Enrolled
+              <span
+                className={`text-[11px] sm:text-xs font-medium ${
+                  portalRole === 'ADMIN' ? 'text-blue-200/80' : 'text-emerald-200/80'
+                }`}
+              >
+                {portalRole === 'ADMIN'
+                  ? 'Enterprise Administrative Control'
+                  : '10,000+ Learners Enrolled'}
               </span>
             </div>
           </div>
@@ -1209,7 +1374,7 @@ export function AuthModal({
             </div>
             <div className="text-xs text-gray-600 space-y-3 leading-relaxed">
               <p>
-                Welcome to InGage LMS. By creating an account or logging in, you agree to comply with our Terms of Service, Honor Code, and Privacy Policy.
+                Welcome to InGage EduTech. By creating an account or logging in, you agree to comply with our Terms of Service, Honor Code, and Privacy Policy.
               </p>
               <h4 className="font-bold text-gray-800 text-sm">1. Account Responsibility</h4>
               <p>

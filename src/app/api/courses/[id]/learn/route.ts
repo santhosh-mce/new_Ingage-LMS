@@ -11,27 +11,54 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     }
 
     const resolvedParams = await params;
-    const courseId = Number(resolvedParams.id);
+    const rawId = resolvedParams.id;
+    const numericId = Number(rawId);
     const isAdmin = isAdminRole(user.role);
 
-    const course = await prisma.courses.findUnique({
-      where: { id: BigInt(courseId) },
-      include: {
-        course_sections: {
-          orderBy: { display_order: "asc" },
-          include: {
-            course_lessons: {
-              orderBy: { display_order: "asc" },
+    let course: any = null;
+    if (!isNaN(numericId)) {
+      course = await prisma.courses.findUnique({
+        where: { id: BigInt(numericId) },
+        include: {
+          course_sections: {
+            orderBy: { display_order: "asc" },
+            include: {
+              course_lessons: {
+                orderBy: { display_order: "asc" },
+              },
             },
           },
         },
-      },
-    });
+      });
+    }
+
+    if (!course) {
+      const idFromPrefix = rawId.startsWith("course-") ? Number(rawId.replace("course-", "")) : NaN;
+      course = await prisma.courses.findFirst({
+        where: {
+          OR: [
+            { slug: rawId },
+            ...(!isNaN(idFromPrefix) ? [{ id: BigInt(idFromPrefix) }] : []),
+          ],
+        },
+        include: {
+          course_sections: {
+            orderBy: { display_order: "asc" },
+            include: {
+              course_lessons: {
+                orderBy: { display_order: "asc" },
+              },
+            },
+          },
+        },
+      });
+    }
 
     if (!course) {
       return NextResponse.json({ error: "Course not found" }, { status: 404 });
     }
 
+    const courseId = Number(course.id);
     const isFree = Number(course.final_price ?? course.price ?? 0) === 0;
 
     let enrollment = null;

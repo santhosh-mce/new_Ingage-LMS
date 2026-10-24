@@ -38,6 +38,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
     if (pathname === "/login") {
       openAuthModal("login", redirectUrl || undefined);
+    } else if (pathname === "/admin/login") {
+      openAuthModal("login", redirectUrl || "/admin");
     } else if (pathname === "/signup") {
       openAuthModal("signup", redirectUrl || undefined);
     } else if (pathname === "/forgot-password" || pathname === "/reset-password") {
@@ -62,11 +64,45 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   };
 
   const isAdminRoute = pathname.startsWith("/admin");
+  const isDashboardRoute = pathname === "/dashboard" || pathname.startsWith("/dashboard/");
+  const isLearnRoute = pathname.startsWith("/learn") || pathname.includes("/learn");
+  const isStudentRoute =
+    pathname === "/discover" ||
+    pathname.startsWith("/discover/") ||
+    pathname === "/my-courses" ||
+    pathname.startsWith("/my-courses/") ||
+    pathname === "/bootcamp" ||
+    pathname.startsWith("/bootcamp/") ||
+    pathname === "/prebooks" ||
+    pathname.startsWith("/prebooks/") ||
+    pathname === "/master-class" ||
+    pathname.startsWith("/master-class/") ||
+    pathname === "/live-classes" ||
+    pathname.startsWith("/live-classes/") ||
+    pathname === "/community" ||
+    pathname.startsWith("/community/") ||
+    pathname === "/certificates" ||
+    pathname.startsWith("/certificates/") ||
+    pathname === "/orders" ||
+    pathname.startsWith("/orders/") ||
+    pathname.startsWith("/courses") ||
+    pathname.startsWith("/my-learning") ||
+    pathname.startsWith("/profile") ||
+    pathname.startsWith("/settings") ||
+    pathname.startsWith("/checkout") ||
+    pathname.startsWith("/payment") ||
+    pathname.startsWith("/pay");
+  const isDedicatedLayoutRoute = isAdminRoute || isDashboardRoute || isLearnRoute || isStudentRoute;
+  const hidePublicNavbar = isDedicatedLayoutRoute || !!currentUser;
 
   return (
     <div
       className={`min-h-screen ${
-        isAdminRoute ? "bg-slate-950 text-slate-100" : "bg-white text-gray-900"
+        isAdminRoute
+          ? "bg-slate-950 text-slate-100"
+          : isDashboardRoute || isLearnRoute || isStudentRoute
+          ? "bg-[#F8FAFC] text-gray-900"
+          : "bg-white text-gray-900"
       } flex flex-col font-sans selection:bg-lime-200 selection:text-lime-900 relative`}
     >
       {toastMessage && (
@@ -86,7 +122,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </div>
       )}
 
-      {!isAdminRoute && (
+      {!hidePublicNavbar && (
         <Header
           currentPath={pathname}
           onNavigate={navigate}
@@ -98,17 +134,25 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
       <main className="flex-1">{children}</main>
 
-      {!isAdminRoute && <Footer onNavigate={navigate} />}
+      {!hidePublicNavbar && <Footer onNavigate={navigate} />}
 
-      <ScreenNavigator currentPath={pathname} onNavigate={navigate} currentUser={currentUser} />
+      {!hidePublicNavbar && (
+        <ScreenNavigator currentPath={pathname} onNavigate={navigate} currentUser={currentUser} />
+      )}
 
       <AuthModal
         isOpen={isAuthModalOpen}
         initialMode={authModalMode}
+        portalRole={
+          pathname === "/admin/login" || pathname.startsWith("/admin")
+            ? "ADMIN"
+            : undefined
+        }
         onClose={() => {
           closeAuthModal();
           if (
             pathname === "/login" ||
+            pathname === "/admin/login" ||
             pathname === "/signup" ||
             pathname === "/forgot-password" ||
             pathname === "/reset-password"
@@ -137,6 +181,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         onSuccess={(user) => {
           closeAuthModal();
           showToast(`Welcome${user?.name ? ", " + user.name : ""}!`);
+          const userRole = (user?.role || "").toUpperCase().trim();
+          const isAdmin = ["ADMIN", "ROLE_ADMIN", "SUPER_ADMIN", "ADMINISTRATOR"].includes(userRole);
+
           let savedRedirect = authRedirectUrl;
           if (!savedRedirect && typeof window !== "undefined") {
             try {
@@ -151,21 +198,32 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             savedRedirect !== "/login" &&
             savedRedirect !== "/signup" &&
             savedRedirect !== "/forgot-password" &&
-            savedRedirect !== "/reset-password"
+            savedRedirect !== "/reset-password" &&
+            savedRedirect !== "/discover" &&
+            savedRedirect !== "/"
           ) {
             try {
               sessionStorage.removeItem("ingage_redirect_after_auth");
             } catch {}
-            navigate(savedRedirect);
-          } else if (user?.role === "ADMIN") {
+
+            // Prevent a student from following a saved redirect into /admin
+            if (!isAdmin && (savedRedirect === "/admin" || savedRedirect.startsWith("/admin/"))) {
+              navigate("/my-courses");
+            } else if (
+              isAdmin &&
+              (savedRedirect === "/my-courses" ||
+                savedRedirect.startsWith("/my-courses/") ||
+                savedRedirect === "/my-learning" ||
+                savedRedirect.startsWith("/my-learning/"))
+            ) {
+              navigate("/admin");
+            } else {
+              navigate(savedRedirect);
+            }
+          } else if (isAdmin) {
             navigate("/admin");
-          } else if (
-            pathname === "/login" ||
-            pathname === "/signup" ||
-            pathname === "/forgot-password" ||
-            pathname === "/reset-password"
-          ) {
-            navigate("/");
+          } else {
+            navigate("/my-courses");
           }
         }}
         onNavigate={navigate}

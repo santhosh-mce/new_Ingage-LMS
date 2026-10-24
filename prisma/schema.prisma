@@ -448,6 +448,9 @@ model lesson_progress {
   watch_duration_seconds Int?
   enrollment_id          BigInt
   lesson_id              BigInt
+  last_position_seconds  Int?           @default(0)
+  total_duration_seconds Int?           @default(0)
+  watched_percentage     Int?           @default(0)
   enrollments            enrollments    @relation(fields: [enrollment_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fkkx3nc17yyecdqwfgdydqmc24x")
   course_lessons         course_lessons @relation(fields: [lesson_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fkshvj4jx8uyf17o3f25js9iwfh")
 

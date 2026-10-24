@@ -449,7 +449,7 @@ export function ScreenNavigator({ currentPath, onNavigate, currentUser: propUser
 
           {/* Footer badge */}
           <div className="p-3 bg-gray-50 border-t border-gray-100 text-center text-[11px] text-gray-500 font-medium">
-            Ingage LMS • Role-Based Learning &amp; Projects
+            InGage EduTech • Role-Based Learning &amp; Management
           </div>
         </div>
       )}

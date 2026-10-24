@@ -1,5 +1,5 @@
 "use client";
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { AdminSidebar } from './AdminSidebar';
 import { UserProfile } from '../types';
 import {
@@ -9,6 +9,7 @@ import {
   ExternalLink,
   ChevronDown,
 } from 'lucide-react';
+import { BrandLogo } from '@/components/brand/BrandLogo';
 
 export interface AdminLayoutProps {
   currentPath: string;
@@ -27,30 +28,32 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({
 }) => {
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [mounted, setMounted] = useState(false);
 
-  const isAdmin = currentUser?.role?.toUpperCase() === 'ADMIN';
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
-  // Role-based route guard: Students cannot access the admin management panel
-  if (currentUser && !isAdmin) {
-    return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
-        <div className="max-w-md w-full bg-white rounded-2xl border border-slate-200 p-8 text-center shadow-lg space-y-4">
-          <div className="w-12 h-12 rounded-full bg-rose-100 text-rose-600 flex items-center justify-center mx-auto font-bold text-xl">
-            ✕
-          </div>
-          <h2 className="text-xl font-bold text-slate-900">Access Denied</h2>
-          <p className="text-sm text-slate-600">
-            You do not have administrative privileges to access this area.
-          </p>
-          <button
-            onClick={() => onNavigate('/')}
-            className="w-full py-2.5 px-4 bg-green-600 hover:bg-green-700 text-white font-bold rounded-xl transition cursor-pointer"
-          >
-            Return to Homepage
-          </button>
-        </div>
-      </div>
-    );
+  const userRole = (currentUser?.role || "").toUpperCase().trim();
+  const isAdmin = ["ADMIN", "ROLE_ADMIN", "SUPER_ADMIN", "ADMINISTRATOR"].includes(userRole);
+
+  // Client-side defense-in-depth route guard: prevent any flash before mount or role confirmation
+  if (!mounted) {
+    return null;
+  }
+
+  if (mounted && !currentUser) {
+    if (typeof window !== "undefined") {
+      window.location.replace("/login?redirect=" + encodeURIComponent(currentPath));
+    }
+    return null;
+  }
+
+  if (mounted && currentUser && !isAdmin) {
+    if (typeof window !== "undefined") {
+      window.location.replace("/my-courses");
+    }
+    return null;
   }
 
   const formatBreadcrumb = (path: string) => {
@@ -90,6 +93,11 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({
               <Menu className="w-5 h-5" />
             </button>
 
+            {/* Mobile InGage EduTech Admin Logo */}
+            <div className="md:hidden">
+              <BrandLogo role="ADMIN" variant="header" theme="light" href="/admin" />
+            </div>
+
             <button
               onClick={() => setCollapsed(!collapsed)}
               className="hidden md:inline-flex p-2 rounded-xl text-slate-500 hover:text-slate-900 hover:bg-slate-100 transition cursor-pointer"
@@ -98,10 +106,10 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({
               <Menu className="w-5 h-5" />
             </button>
 
-            <div className="flex items-center gap-2 text-sm">
+            <div className="hidden sm:flex items-center gap-2 text-sm">
               <span className="font-semibold text-slate-900 flex items-center gap-2">
-                <span className="hidden sm:inline text-slate-400">Admin</span>
-                <span className="hidden sm:inline text-slate-300">/</span>
+                <span className="text-slate-400">Admin</span>
+                <span className="text-slate-300">/</span>
                 <span className="text-slate-800 font-bold">{formatBreadcrumb(currentPath)}</span>
               </span>
             </div>
@@ -112,36 +120,49 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({
             {/* Quick Switch to Learner Site */}
             <button
               onClick={() => onNavigate('/')}
-              className="hidden lg:flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-50 hover:bg-green-50 text-slate-600 hover:text-green-700 border border-slate-200 hover:border-green-200 text-xs font-semibold transition-all cursor-pointer"
+              className="hidden lg:flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-50 hover:bg-blue-50 text-slate-600 hover:text-blue-700 border border-slate-200 hover:border-blue-200 text-xs font-semibold transition-all cursor-pointer"
               title="Switch to Learner Portal"
             >
-              <ExternalLink className="w-3.5 h-3.5 text-green-600" />
+              <ExternalLink className="w-3.5 h-3.5 text-blue-600" />
               <span>Learner View</span>
             </button>
 
-            {/* Notification Bell with Green Badge */}
+            {/* Notification Bell with Blue Badge */}
             <button
               onClick={() => onNavigate('/admin/activity')}
               className="relative p-2.5 rounded-xl text-slate-500 hover:text-slate-900 hover:bg-slate-100 transition cursor-pointer"
               title="Recent Notifications"
             >
               <Bell className="w-4 h-4" />
-              <span className="absolute top-2 right-2 w-2 h-2 rounded-full bg-green-600 ring-2 ring-white animate-pulse" />
+              <span className="absolute top-2 right-2 w-2 h-2 rounded-full bg-blue-600 ring-2 ring-white animate-pulse" />
             </button>
 
             <div className="h-6 w-px bg-slate-200 hidden sm:block" />
 
             {/* Admin Profile Display */}
             <div className="flex items-center gap-3 pl-1">
-              <div className="w-9 h-9 rounded-xl bg-green-600 text-white flex items-center justify-center font-bold text-sm shadow-sm shadow-green-950/20">
-                {currentUser?.name ? currentUser.name.charAt(0).toUpperCase() : 'A'}
+              <div
+                suppressHydrationWarning
+                className="w-9 h-9 rounded-xl bg-blue-600 text-white flex items-center justify-center font-bold text-sm shadow-sm shadow-blue-950/20"
+              >
+                {mounted && currentUser?.name ? currentUser.name.charAt(0).toUpperCase() : 'A'}
               </div>
               <div className="hidden md:flex flex-col text-left">
-                <span className="text-xs font-bold text-slate-900 leading-tight">
-                  {currentUser?.name || 'Admin'}
+                <span
+                  suppressHydrationWarning
+                  className="text-xs font-bold text-slate-900 leading-tight"
+                >
+                  {mounted && currentUser?.name ? currentUser.name : 'Admin'}
                 </span>
-                <span className="text-[11px] text-green-700 font-medium">
-                  {currentUser?.role === 'ADMIN' ? 'Administrator' : currentUser?.role || 'Administrator'}
+                <span
+                  suppressHydrationWarning
+                  className="text-[11px] text-blue-700 font-medium"
+                >
+                  {mounted && currentUser?.role
+                    ? currentUser.role === 'ADMIN'
+                      ? 'Administrator'
+                      : currentUser.role
+                    : 'Administrator'}
                 </span>
               </div>
 

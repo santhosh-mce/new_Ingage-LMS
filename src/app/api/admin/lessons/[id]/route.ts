@@ -30,6 +30,42 @@ function parseDuration(duration: any): number {
   return 0;
 }
 
+
+export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
+  try {
+    const user = await getSessionUser(req);
+    if (user && !["ADMIN", "ROLE_ADMIN", "SUPER_ADMIN", "ADMINISTRATOR", "STAFF", "INSTRUCTOR"].includes(user.role?.toUpperCase())) {
+      return NextResponse.json({ error: "Forbidden: Admin access required" }, { status: 403 });
+    }
+
+    const resolvedParams = await params;
+    const lessonId = BigInt(resolvedParams.id);
+
+    const lesson = await prisma.course_lessons.findUnique({
+      where: { id: lessonId },
+      include: {
+        quiz_questions: {
+          orderBy: { display_order: "asc" },
+          include: {
+            quiz_question_options: {
+              orderBy: { option_order: "asc" },
+            },
+          },
+        },
+      },
+    });
+
+    if (!lesson) {
+      return NextResponse.json({ error: "Lesson not found" }, { status: 404 });
+    }
+
+    return NextResponse.json(serializeData(lesson));
+  } catch (error: any) {
+    console.error("Fetch lesson error:", error);
+    return NextResponse.json({ error: "Failed to fetch lesson" }, { status: 500 });
+  }
+}
+
 export async function PUT(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const user = await getSessionUser(req);
@@ -194,9 +230,19 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ id: s
       where: { lesson_id: lessonId },
     });
 
-    await prisma.quiz_questions.deleteMany({
+    const questions = await prisma.quiz_questions.findMany({
       where: { lesson_id: lessonId },
+      select: { id: true },
     });
+    const questionIds = questions.map((q) => q.id);
+    if (questionIds.length > 0) {
+      await prisma.quiz_question_options.deleteMany({
+        where: { question_id: { in: questionIds } },
+      });
+      await prisma.quiz_questions.deleteMany({
+        where: { id: { in: questionIds } },
+      });
+    }
 
     await prisma.course_lessons.delete({
       where: { id: lessonId },

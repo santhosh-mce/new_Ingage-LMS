@@ -135,9 +135,14 @@ const apiClient = axios.create({
 });
 
 apiClient.interceptors.request.use((config) => {
-  const token = localStorage.getItem('ingage_token');
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
+  if (typeof window !== 'undefined') {
+    const token = localStorage.getItem('ingage_token') || localStorage.getItem('token');
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
+    }
+  }
+  if (config.data instanceof FormData) {
+    delete config.headers['Content-Type'];
   }
   return config;
 });
@@ -247,12 +252,7 @@ export async function uploadResume(file: File): Promise<{ success: boolean; mess
   formData.append('file', file);
   const response = await apiClient.post<{ success: boolean; message: string; resume: ResumeDto }>(
     '/profile/me/resume',
-    formData,
-    {
-      headers: {
-        'Content-Type': 'multipart/form-data',
-      },
-    }
+    formData
   );
   return response.data;
 }

@@ -64,8 +64,8 @@ export function SkillBadgePage({
   const handleShare = () => {
     if (navigator.share) {
       navigator.share({
-        title: `${badge?.badgeName || 'InGage Skill Badge'} - InGage LMS`,
-        text: `I just earned the ${badge?.badgeName} Skill Badge in Google Generative AI on InGage LMS!`,
+        title: `${badge?.badgeName || 'InGage Skill Badge'} - InGage EduTech`,
+        text: `I just earned the ${badge?.badgeName} Skill Badge in Google Generative AI on InGage EduTech!`,
         url: window.location.href
       }).catch(() => {});
     } else {

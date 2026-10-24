@@ -9,9 +9,14 @@ const api = axios.create({
 });
 
 api.interceptors.request.use((config) => {
-  const token = localStorage.getItem('ingage_token');
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
+  if (typeof window !== 'undefined') {
+    const token = localStorage.getItem('ingage_token') || localStorage.getItem('token');
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
+    }
+  }
+  if (config.data instanceof FormData) {
+    delete config.headers['Content-Type'];
   }
   return config;
 });
@@ -121,18 +126,32 @@ export async function deleteAdminCourse(id: number | string) {
 }
 
 // Sections & Lessons Builder
-export async function addCourseSection(courseId: number | string, payload: { title: string; description?: string }) {
+export async function addCourseSection(courseId: number | string, payload: { title: string; description?: string; displayOrder?: number; display_order?: number } | any) {
   const res = await api.post(`/admin/courses/${courseId}/sections`, payload);
   return res.data;
 }
 
-export async function updateCourseSection(sectionId: number | string, payload: { title: string; description?: string }) {
+export async function updateCourseSection(sectionId: number | string, payload: { title?: string; description?: string; displayOrder?: number; display_order?: number } | any) {
   const res = await api.put(`/admin/sections/${sectionId}`, payload);
   return res.data;
 }
 
 export async function deleteCourseSection(sectionId: number | string) {
   const res = await api.delete(`/admin/sections/${sectionId}`);
+  return res.data;
+}
+
+export async function getCourseSections(courseId: number | string, type = 'VIDEO') {
+  const params: Record<string, string> = {};
+  if (type) params.type = type;
+  const res = await api.get(`/admin/courses/${courseId}/sections`, { params });
+  return res.data;
+}
+
+export async function getVideoCurriculumModules(courseId: number | string) {
+  const res = await api.get(`/admin/courses/${courseId}/sections`, {
+    params: { type: 'VIDEO' },
+  });
   return res.data;
 }
 
@@ -143,6 +162,12 @@ export async function addCourseLesson(sectionId: number | string, payload: Recor
 
 export async function updateCourseLesson(lessonId: number | string, payload: Record<string, any>) {
   const res = await api.put(`/admin/lessons/${lessonId}`, payload);
+  return res.data;
+}
+
+
+export async function getCourseLesson(lessonId: number | string) {
+  const res = await api.get('/admin/lessons/' + lessonId);
   return res.data;
 }
 
@@ -230,17 +255,86 @@ export async function deleteAdminCategory(id: number) {
 }
 
 // Media Upload
-export async function uploadMediaFile(file: File, category: 'video' | 'thumbnail' | 'document') {
+export async function uploadMediaFile(
+  file: File,
+  category: 'video' | 'thumbnail' | 'document' = 'video',
+  onProgress?: (progressPercent: number) => void
+) {
   const formData = new FormData();
   formData.append('file', file);
   formData.append('category', category);
 
-  const res = await api.post('/admin/media/upload', formData, {
-    headers: {
-      'Content-Type': 'multipart/form-data',
-    },
+  const token = typeof window !== 'undefined'
+    ? (localStorage.getItem('ingage_token') || localStorage.getItem('token'))
+    : null;
+
+  if (onProgress) {
+    return new Promise<any>((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open('POST', '/api/admin/media/upload');
+      if (token) {
+        xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+      }
+      xhr.withCredentials = true;
+
+      xhr.upload.onprogress = (event) => {
+        if (event.lengthComputable) {
+          const percent = Math.round((event.loaded / event.total) * 100);
+          onProgress(percent);
+        }
+      };
+
+      xhr.onload = () => {
+        try {
+          const data = JSON.parse(xhr.responseText);
+          if (xhr.status >= 200 && xhr.status < 300) {
+            resolve(data);
+          } else {
+            reject(new Error(data.error || data.message || `Upload failed with status ${xhr.status}`));
+          }
+        } catch {
+          if (xhr.status >= 200 && xhr.status < 300) {
+            resolve({ success: true });
+          } else {
+            reject(new Error(`Upload failed with status ${xhr.status}`));
+          }
+        }
+      };
+
+      xhr.onerror = () => {
+        reject(new Error('Network error during upload'));
+      };
+
+      xhr.send(formData);
+    });
+  }
+
+  const headers: Record<string, string> = {};
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+
+  // NOTE: Never set Content-Type manually! The browser automatically computes
+  // the multipart boundary for FormData.
+  const res = await fetch('/api/admin/media/upload', {
+    method: 'POST',
+    body: formData,
+    headers,
+    credentials: 'include',
   });
-  return res.data;
+
+  if (!res.ok) {
+    let errorMsg = 'Failed to upload media file';
+    try {
+      const errData = await res.json();
+      errorMsg = errData.error || errData.message || errorMsg;
+    } catch {
+      errorMsg = `Upload failed with status ${res.status}: ${res.statusText}`;
+    }
+    throw new Error(errorMsg);
+  }
+
+  return await res.json();
 }
 
 // Payments & Orders
@@ -303,6 +397,7 @@ export async function getAdminProgress(search?: string, courseId?: number | stri
 export async function markLessonComplete(
   lessonId: number | string,
   payload?: {
+    courseId?: number | string;
     currentTime?: number;
     duration?: number;
     watchDurationSeconds?: number;
@@ -489,5 +584,26 @@ export async function uploadAdminAvatar(file: File) {
       'Content-Type': 'multipart/form-data',
     },
   });
+  return res.data;
+}
+
+export async function getCourseReports(courseId: number | string) {
+  const res = await api.get(`/admin/courses/${courseId}/reports`);
+  return res.data;
+}
+
+
+export async function adminGenerateCertificate(userId: string, courseId: number | string) {
+  const res = await api.post('/admin/certificates/generate', { userId, courseId });
+  return res.data;
+}
+
+export async function adminRevokeCertificate(certId: number | string) {
+  const res = await api.post(`/admin/certificates/${certId}/revoke`);
+  return res.data;
+}
+
+export async function adminRestoreCertificate(certId: number | string) {
+  const res = await api.post(`/admin/certificates/${certId}/restore`);
   return res.data;
 }

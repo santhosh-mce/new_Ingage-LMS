@@ -168,7 +168,7 @@ export function CredentialCourseDetailPage({
         key: razorpayKey,
         amount: order.amountInPaise || Math.round((order.amount || 0) * 100),
         currency: order.currency || 'INR',
-        name: 'InGage LMS',
+        name: 'InGage EduTech',
         description: course.title,
         order_id: order.razorpayOrderId || order.orderId,
         handler: async (response: any) => {
@@ -246,7 +246,7 @@ export function CredentialCourseDetailPage({
       courseName: course?.title || 'Google Generative AI',
       courseCategory: course?.category || 'Artificial Intelligence',
       courseDuration: course?.duration || 'Approx. 2 months',
-      instructor: 'Google Cloud Training & InGage LMS',
+      instructor: 'Google Cloud Training & InGage EduTech',
       completionDate: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
       formattedDate: new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }),
       issuedAt: new Date().toISOString(),

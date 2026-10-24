@@ -146,7 +146,7 @@ export function CareerDetailPage({
         key: (orderRes.keyId || 'rzp_test_TccoJ6A0ra1dCg').trim(),
         amount: orderRes.amountInPaise || Math.round((orderRes.amount || 0) * 100),
         currency: orderRes.currency || 'INR',
-        name: 'Ingage LMS',
+        name: 'InGage EduTech',
         description: `Enrollment: ${c.courseTitle}`,
         order_id: (orderRes.razorpayOrderId || (orderRes as any).orderId || '').toString().trim(),
         prefill: {
@@ -510,7 +510,7 @@ export function CareerDetailPage({
         key: (orderRes.keyId || 'rzp_test_TccoJ6A0ra1dCg').trim(),
         amount: orderRes.amountInPaise || Math.round((orderRes.amount || 0) * 100),
         currency: orderRes.currency || 'INR',
-        name: 'InGage LMS',
+        name: 'InGage EduTech',
         description: `Enrollment: ${career.title} Career Path`,
         order_id: (orderRes.razorpayOrderId || (orderRes as any).orderId || '').toString().trim(),
         prefill: {

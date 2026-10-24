@@ -39,7 +39,7 @@ export async function GET(req: Request) {
     };
 
     const email: Record<string, string> = {
-      email_sender_name: "Ingage LMS Support",
+      email_sender_name: "InGage EduTech Support",
       email_sender_email: "no-reply@ingage.com",
       provider: "In-App / System Logger",
       status: "Active (Direct Authentication & Database Logging)",
@@ -72,7 +72,7 @@ export async function GET(req: Request) {
     };
 
     const system = {
-      appName: "Ingage LMS Platform",
+      appName: "InGage EduTech Platform",
       appVersion: "2.0.0",
       backendStatus: "Operational / Healthy (Next.js 16 App Router)",
       databaseStatus: "Connected (PostgreSQL / Supabase Live Pool)",

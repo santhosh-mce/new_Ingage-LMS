@@ -1,5 +1,6 @@
 "use client";
 import React from 'react';
+import { BrandLogo } from './brand/BrandLogo';
 
 interface FooterProps {
   onNavigate: (path: string) => void;
@@ -7,16 +8,14 @@ interface FooterProps {
 
 export function Footer({ onNavigate }: FooterProps) {
   return (
-    <footer className="bg-[#242424] text-white pt-10 pb-8 mt-0 w-full border-t border-neutral-800">
+    <footer className="bg-[#111827] text-white pt-10 pb-8 mt-0 w-full border-t border-neutral-800">
       <div className="w-full px-4 sm:px-8 lg:px-12 xl:px-16 2xl:px-20">
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-8 md:gap-10 pb-12 border-b border-neutral-700/60">
           {/* Brand Info */}
           <div className="space-y-4 md:col-span-1">
-            <div className="text-2xl font-bold tracking-tight flex items-center gap-1">
-              <span>Ingage LMS</span>
-            </div>
+            <BrandLogo role="STUDENT" variant="horizontal" theme="dark" onClick={() => onNavigate('/')} />
             <p className="text-neutral-400 text-sm leading-relaxed max-w-sm">
-              Empowering professionals with role-based learning paths designed for real career growth.
+              Empowering learners and institutions with role-based pathways and cutting-edge EdTech tools.
             </p>
           </div>
 
@@ -104,7 +103,7 @@ export function Footer({ onNavigate }: FooterProps) {
 
         {/* Bottom bar */}
         <div className="pt-8 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-neutral-400">
-          <div>© 2026 Ingage LMS. All rights reserved.</div>
+          <div>© 2026 InGage EduTech. All rights reserved.</div>
           <div className="flex items-center gap-3">
             <span className="w-8 h-8 rounded-full bg-neutral-800 flex items-center justify-center text-neutral-300 hover:text-white hover:bg-neutral-700 cursor-pointer">
               f

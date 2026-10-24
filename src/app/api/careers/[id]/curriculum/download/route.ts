@@ -34,7 +34,7 @@ export async function GET(
     }
 
     let text = `============================================================\n`;
-    text += `           INGAGE LMS - CAREER CURRICULUM SYLLABUS\n`;
+    text += `         INGAGE EDUTECH - CAREER CURRICULUM SYLLABUS\n`;
     text += `============================================================\n\n`;
     text += `Role: ${career.title}\n`;
     text += `Category: ${career.category}\n`;

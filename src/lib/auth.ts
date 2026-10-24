@@ -27,20 +27,17 @@ export function signToken(payload: TokenPayload): string {
 
 export function verifyToken(token: string): TokenPayload | null {
   try {
-    return jwt.verify(token, JWT_SECRET) as TokenPayload;
+    const decoded = jwt.verify(token, JWT_SECRET) as any;
+    if (!decoded || (!decoded.userId && !decoded.id && !decoded.sub)) {
+      return null;
+    }
+    return {
+      userId: decoded.userId || decoded.id || decoded.sub || "",
+      email: decoded.email || (decoded.sub && decoded.sub.includes("@") ? decoded.sub : ""),
+      role: (decoded.role || (decoded.roles && decoded.roles[0]) || "STUDENT").toUpperCase().trim(),
+      name: decoded.name || "Student",
+    };
   } catch {
-    try {
-      // Decode without verification if secret differs slightly across legacy tokens
-      const decoded = jwt.decode(token) as any;
-      if (decoded && (decoded.userId || decoded.sub || decoded.email)) {
-        return {
-          userId: decoded.userId || decoded.id || decoded.sub || "",
-          email: decoded.email || (decoded.sub && decoded.sub.includes("@") ? decoded.sub : ""),
-          role: decoded.role || (decoded.roles && decoded.roles[0]) || "STUDENT",
-          name: decoded.name || "Student",
-        };
-      }
-    } catch {}
     return null;
   }
 }
@@ -51,14 +48,14 @@ export async function getSessionUser(req?: Request) {
   if (req) {
     const authHeader = req.headers.get("authorization");
     if (authHeader && authHeader.startsWith("Bearer ")) {
-      token = authHeader.substring(7);
+      token = authHeader.substring(7).trim();
     }
   }
 
   if (!token) {
     try {
       const cookieStore = await cookies();
-      token = cookieStore.get("AUTH_TOKEN")?.value;
+      token = cookieStore.get("AUTH_TOKEN")?.value?.trim();
     } catch {
       // ignore
     }
@@ -66,25 +63,25 @@ export async function getSessionUser(req?: Request) {
 
   if (!token) return null;
 
-  const payload: any = verifyToken(token);
+  const payload = verifyToken(token);
   if (!payload) return null;
 
-  const targetId = payload.userId || payload.id;
-  const targetEmail = payload.email || (payload.sub && payload.sub.includes("@") ? payload.sub : undefined);
+  const targetId = payload.userId;
+  const targetEmail = payload.email;
 
   try {
     if (targetId && typeof targetId === "string" && targetId.length > 10 && !targetId.includes("@")) {
       const userById = await prisma.users.findUnique({
         where: { id: targetId },
       });
-      if (userById) return userById;
+      if (userById && userById.active) return userById;
     }
 
     if (targetEmail && typeof targetEmail === "string") {
       const userByEmail = await prisma.users.findUnique({
         where: { email: targetEmail.toLowerCase().trim() },
       });
-      if (userByEmail) return userByEmail;
+      if (userByEmail && userByEmail.active) return userByEmail;
     }
   } catch (err) {
     console.error("getSessionUser DB lookup error:", err);
@@ -109,6 +106,43 @@ export function isAdminRole(role?: string | null): boolean {
 }
 
 export function isStudentRole(role?: string | null): boolean {
-  if (!role) return true;
+  if (!role) return false;
   return !isAdminRole(role);
+}
+
+export async function requireAuth(req?: Request) {
+  const user = await getSessionUser(req);
+  if (!user) {
+    return {
+      user: null,
+      errorResponse: {
+        error: "Unauthorized: Please log in to continue",
+        status: 401 as const,
+      },
+    };
+  }
+  return { user, errorResponse: null };
+}
+
+export async function requireAdmin(req?: Request) {
+  const user = await getSessionUser(req);
+  if (!user) {
+    return {
+      user: null,
+      errorResponse: {
+        error: "Unauthorized: Please log in to continue",
+        status: 401 as const,
+      },
+    };
+  }
+  if (!isAdminRole(user.role)) {
+    return {
+      user: null,
+      errorResponse: {
+        error: "Forbidden: Admin access required",
+        status: 403 as const,
+      },
+    };
+  }
+  return { user, errorResponse: null };
 }

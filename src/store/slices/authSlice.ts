@@ -141,7 +141,7 @@ export const loginUserThunk = createAsyncThunk<
       id: res.userId || '1',
       name: res.name || payload.email.split('@')[0],
       email: res.email || payload.email,
-      role: res.role || 'LEARNER',
+      role: res.role || 'STUDENT',
       enrolledPaths: [],
     };
 
@@ -165,7 +165,7 @@ export const registerUserThunk = createAsyncThunk<
       id: res.userId || '1',
       name: res.name || payload.name,
       email: res.email || payload.email,
-      role: res.role || 'LEARNER',
+      role: res.role || 'STUDENT',
       enrolledPaths: [],
     };
 

@@ -1,292 +1,249 @@
 "use client";
-import React from 'react';
-
-export interface SkillBadgeItem {
-  name: string;
-  category: string;
-  type: 'react' | 'node' | 'postgres' | 'typescript' | 'code' | 'database';
-}
+import React from "react";
 
 export interface IngageCertificateProps {
   id?: string;
   studentName?: string;
   courseTitle?: string;
+  projectName?: string;
+  institutionName?: string;
   certificateNumber?: string;
   formattedDate?: string;
   instructorName?: string;
-  skills?: SkillBadgeItem[];
   className?: string;
 }
 
-const defaultSkills: SkillBadgeItem[] = [
-  { name: 'React', category: 'Frontend', type: 'react' },
-  { name: 'Node.js', category: 'Backend', type: 'node' },
-  { name: 'PostgreSQL', category: 'Database', type: 'postgres' },
-  { name: 'TypeScript', category: 'Language', type: 'typescript' },
-];
-
 export const IngageCertificate: React.FC<IngageCertificateProps> = ({
-  id = 'certificate-canvas',
-  studentName = 'Santhosh Kumar D',
-  courseTitle = 'Full Stack Development',
-  certificateNumber = 'ING-2026-7842',
-  formattedDate = 'Sep 18, 2026',
-  instructorName = 'Alex Rivera',
-  skills = defaultSkills,
-  className = '',
+  id = "ingage-official-certificate",
+  studentName = "ANDREA JOSEPH",
+  courseTitle = "IoT and its Applications",
+  projectName = "Smart Home IoT Monitoring System",
+  institutionName = "Sathyabama Institute of Science and Technology",
+  certificateNumber = "ING-2026-000123",
+  formattedDate = "04 October 2026",
+  instructorName = "Sri Harsha",
+  className = "",
 }) => {
   return (
     <div
       id={id}
-      className={`relative bg-white text-slate-900 w-full aspect-[1.414/1] max-w-[1000px] mx-auto rounded-xl p-8 sm:p-12 md:p-14 shadow-2xl overflow-hidden border border-slate-200 select-none flex flex-col justify-between ${className}`}
+      className={`relative w-full aspect-[1.414/1] max-w-[1000px] mx-auto bg-white text-slate-900 shadow-2xl rounded-2xl overflow-hidden select-none border border-slate-200 print:shadow-none print:border-none ${className}`}
       style={{
-        boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.15)',
-        fontFamily: "'Inter', system-ui, -apple-system, sans-serif",
+        boxSizing: "border-box",
+        fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
       }}
     >
-      {/* 1. TOP RIGHT GEOMETRIC ACCENT SHAPES */}
-      <div className="absolute top-0 right-0 w-44 h-44 sm:w-56 sm:h-56 pointer-events-none overflow-hidden z-0">
-        <svg viewBox="0 0 200 200" className="w-full h-full">
+      {/* 1. ELEGANT GOLD INNER BORDER */}
+      <div className="absolute inset-3 sm:inset-4 border border-[#D4AF37]/70 rounded-xl pointer-events-none z-10" />
+
+      {/* 2. TOP-LEFT CORNER LUXURY WAVE (Navy & Gold) */}
+      <div className="absolute top-0 left-0 w-[42%] h-[42%] pointer-events-none z-0 overflow-hidden">
+        <svg
+          viewBox="0 0 350 250"
+          className="w-full h-full object-cover"
+          preserveAspectRatio="none"
+        >
           <defs>
-            <linearGradient id="cornerGreen1" x1="0%" y1="0%" x2="100%" y2="100%">
-              <stop offset="0%" stopColor="#15803d" />
-              <stop offset="100%" stopColor="#22c55e" />
+            <linearGradient id="goldGradTL" x1="0%" y1="100%" x2="100%" y2="0%">
+              <stop offset="0%" stopColor="#8A6715" />
+              <stop offset="50%" stopColor="#E5C06A" />
+              <stop offset="100%" stopColor="#F9DF95" />
             </linearGradient>
-            <linearGradient id="cornerGreen2" x1="0%" y1="0%" x2="100%" y2="100%">
-              <stop offset="0%" stopColor="#14532d" />
-              <stop offset="100%" stopColor="#15803d" />
-            </linearGradient>
-            <linearGradient id="cornerLime" x1="0%" y1="0%" x2="100%" y2="100%">
-              <stop offset="0%" stopColor="#84cc16" stopOpacity="0.8" />
-              <stop offset="100%" stopColor="#a3e635" stopOpacity="0.9" />
+            <linearGradient id="navyGradTL" x1="0%" y1="100%" x2="100%" y2="0%">
+              <stop offset="0%" stopColor="#041E42" />
+              <stop offset="70%" stopColor="#0A2C59" />
+              <stop offset="100%" stopColor="#0D3B73" />
             </linearGradient>
           </defs>
-          {/* Layered diagonal polygons */}
-          <polygon points="120,0 200,0 200,80" fill="url(#cornerGreen2)" />
-          <polygon points="80,0 200,0 200,120" fill="url(#cornerGreen1)" opacity="0.85" />
-          <polygon points="140,0 200,0 200,60" fill="url(#cornerGreen2)" />
-          <polygon points="50,0 120,0 200,80 200,150" fill="url(#cornerLime)" opacity="0.6" />
+
+          {/* Gold Wave Layer */}
+          <path
+            d="M 0,0 L 220,0 C 170,90 90,170 0,230 Z"
+            fill="url(#goldGradTL)"
+          />
+          {/* Deep Navy Blue Wave Layer */}
+          <path
+            d="M 0,0 L 160,0 C 130,75 65,145 0,195 Z"
+            fill="url(#navyGradTL)"
+          />
         </svg>
       </div>
 
-      {/* 2. BOTTOM LEFT GEOMETRIC ACCENT SHAPES */}
-      <div className="absolute bottom-0 left-0 w-44 h-44 sm:w-56 sm:h-56 pointer-events-none overflow-hidden z-0">
-        <svg viewBox="0 0 200 200" className="w-full h-full">
+      {/* 3. BOTTOM-RIGHT CORNER LUXURY WAVE (Navy & Gold) */}
+      <div className="absolute bottom-0 right-0 w-[42%] h-[42%] pointer-events-none z-0 overflow-hidden rotate-180">
+        <svg
+          viewBox="0 0 350 250"
+          className="w-full h-full object-cover"
+          preserveAspectRatio="none"
+        >
           <defs>
-            <linearGradient id="cornerBottom1" x1="0%" y1="100%" x2="100%" y2="0%">
-              <stop offset="0%" stopColor="#14532d" />
-              <stop offset="100%" stopColor="#15803d" />
+            <linearGradient id="goldGradBR" x1="0%" y1="100%" x2="100%" y2="0%">
+              <stop offset="0%" stopColor="#8A6715" />
+              <stop offset="50%" stopColor="#E5C06A" />
+              <stop offset="100%" stopColor="#F9DF95" />
             </linearGradient>
-            <linearGradient id="cornerBottom2" x1="0%" y1="100%" x2="100%" y2="0%">
-              <stop offset="0%" stopColor="#166534" />
-              <stop offset="100%" stopColor="#4ade80" stopOpacity="0.8" />
+            <linearGradient id="navyGradBR" x1="0%" y1="100%" x2="100%" y2="0%">
+              <stop offset="0%" stopColor="#041E42" />
+              <stop offset="70%" stopColor="#0A2C59" />
+              <stop offset="100%" stopColor="#0D3B73" />
             </linearGradient>
           </defs>
-          <polygon points="0,80 0,200 120,200" fill="url(#cornerBottom1)" />
-          <polygon points="0,120 0,200 80,200" fill="url(#cornerBottom2)" opacity="0.9" />
-          <polygon points="0,50 0,110 90,200 150,200" fill="#84cc16" opacity="0.5" />
+
+          {/* Gold Wave Layer */}
+          <path
+            d="M 0,0 L 220,0 C 170,90 90,170 0,230 Z"
+            fill="url(#goldGradBR)"
+          />
+          {/* Deep Navy Blue Wave Layer */}
+          <path
+            d="M 0,0 L 160,0 C 130,75 65,145 0,195 Z"
+            fill="url(#navyGradBR)"
+          />
         </svg>
       </div>
 
-      {/* 3. BACKGROUND SOFT BOTANICAL WATERMARK (BOTTOM RIGHT) */}
-      <div className="absolute bottom-4 right-16 w-56 h-56 pointer-events-none opacity-[0.06] z-0">
-        <svg viewBox="0 0 100 100" className="w-full h-full fill-emerald-800">
-          <path d="M50 0 C65 25 80 40 100 50 C75 65 60 80 50 100 C35 75 20 60 0 50 C25 35 40 20 50 0 Z" />
-        </svg>
-      </div>
-
-      {/* 4. TOP BAR: LOGO + SLOGAN (LEFT) | CERTIFICATE ID + DATE (RIGHT) */}
-      <div className="relative z-10 flex items-start justify-between gap-4">
-        {/* Ingage Logo & Slogan */}
-        <div className="flex items-center gap-3">
-          <div className="flex items-center text-2xl sm:text-3xl font-black tracking-tight">
-            <span className="text-slate-900 font-extrabold">in</span>
-            <span className="text-[#16a34a] font-extrabold">gage</span>
-          </div>
-          <div className="h-5 w-[1.5px] bg-slate-300" />
-          <span className="text-xs sm:text-sm font-medium text-slate-500 tracking-wide">
-            Learn &bull; Build &bull; Grow
-          </span>
-        </div>
-
-        {/* Certificate Metadata */}
-        <div className="text-right space-y-0.5 pr-2 sm:pr-4">
-          <div className="text-[11px] sm:text-xs font-semibold text-slate-600">
-            Certificate ID: <span className="font-mono text-slate-700">{certificateNumber}</span>
-          </div>
-          <div className="text-[11px] sm:text-xs font-semibold text-slate-600">
-            Issued on: <span className="font-medium text-slate-700">{formattedDate}</span>
-          </div>
-        </div>
-      </div>
-
-      {/* 5. MAIN CONTENT & GOLD ROSETTE BADGE */}
-      <div className="relative z-10 grid grid-cols-1 md:grid-cols-12 gap-4 items-center my-auto pt-4 pb-2">
-        {/* Left Column: Titles & Student Information (8 cols) */}
-        <div className="md:col-span-8 space-y-3 sm:space-y-4">
-          <div className="text-[11px] sm:text-xs font-black tracking-[0.2em] text-[#16a34a] uppercase">
-            CERTIFICATE OF COMPLETION
+      {/* 4. MAIN CERTIFICATE CONTENT CONTAINER */}
+      <div className="relative z-10 w-full h-full flex flex-col justify-between px-8 sm:px-16 py-6 sm:py-9">
+        
+        {/* TOP SECTION: BRAND LOGO */}
+        <div className="text-center pt-1 sm:pt-2">
+          {/* Ingage Logo with Green Dot on the 'i' */}
+          <div className="inline-flex items-center justify-center">
+            <span className="text-3xl sm:text-4xl md:text-5xl font-extrabold tracking-tight text-[#222222] font-sans flex items-baseline">
+              <span className="relative inline-block">
+                {/* bright lime green dot */}
+                <span className="absolute -top-1 left-[2px] w-2.5 h-2.5 sm:w-3 sm:h-3 rounded-full bg-[#7CB342]" />
+                i
+              </span>
+              ngage
+            </span>
           </div>
 
-          <h1 className="text-3xl sm:text-4xl md:text-5xl font-extrabold text-slate-900 tracking-tight leading-none">
-            {courseTitle}
+          {/* Course Completion Certificate Gothic Title */}
+          <h1
+            className="text-2xl sm:text-3xl md:text-4xl text-slate-900 mt-2 sm:mt-3 font-serif tracking-tight"
+            style={{
+              fontFamily: "'Playfair Display', Georgia, 'Times New Roman', serif",
+              fontWeight: 800,
+            }}
+          >
+            Course Completion Certificate
           </h1>
 
-          <div className="text-xs sm:text-sm text-slate-500 font-medium pt-1">
-            This certifies that
+          {/* Centered Three Dots + Certification Text */}
+          <div className="flex items-center justify-center gap-2 mt-2 sm:mt-3 text-slate-800 text-[10px] sm:text-xs font-bold tracking-[0.25em] uppercase">
+            <span className="text-[#0B2545] tracking-widest text-sm">&bull;&bull;&bull;</span>
+            <span>THIS IS TO CERTIFY THAT</span>
+            <span className="text-[#0B2545] tracking-widest text-sm">&bull;&bull;&bull;</span>
           </div>
+        </div>
 
-          <div className="text-2xl sm:text-3xl md:text-4xl font-black text-slate-900 tracking-tight pb-1">
+        {/* MIDDLE SECTION: STUDENT NAME & COURSE/PROJECT DETAILS */}
+        <div className="text-center space-y-1 sm:space-y-2 py-1">
+          {/* Student Full Name in Large Bold Lime/Olive Green */}
+          <h2 className="text-2xl sm:text-3xl md:text-4xl font-extrabold text-[#749E10] tracking-wide uppercase font-sans">
             {studentName}
-          </div>
+          </h2>
 
-          <p className="text-xs sm:text-sm text-slate-600 max-w-xl leading-relaxed font-normal">
-            has successfully completed the <strong className="text-slate-900 font-semibold">{courseTitle}</strong> course
-            offered by Ingage LMS and demonstrated the required skills and knowledge in modern web technologies.
+          <p className="text-xs sm:text-sm text-slate-600 font-medium">
+            Student of
+          </p>
+
+          <p className="text-xs sm:text-sm md:text-base font-bold text-slate-900">
+            {institutionName}
+          </p>
+
+          <p className="text-xs sm:text-sm text-slate-600 font-medium pt-0.5">
+            has successfully completed the
+          </p>
+
+          {/* Course Name in Deep Navy Quotes */}
+          <h3 className="text-sm sm:text-base md:text-lg font-extrabold text-[#002B49] px-4 max-w-3xl mx-auto leading-snug">
+            &ldquo;{courseTitle.toUpperCase()}&rdquo;
+          </h3>
+
+          {/* Project & Practical Details */}
+          <p className="text-[11px] sm:text-xs md:text-sm text-slate-700 max-w-2xl mx-auto leading-relaxed px-4">
+            under the <strong className="text-slate-900 font-semibold">{projectName}</strong> Hands-on learning, virtual internship and project-based experience
+          </p>
+
+          <p className="text-[10px] sm:text-xs text-slate-500 max-w-xl mx-auto pt-0.5">
+            conducted by InGage Technologies Pvt. Ltd. in association with {institutionName}
           </p>
         </div>
 
-        {/* Right Column: GOLD MEDAL ROSETTE BADGE (4 cols) */}
-        <div className="md:col-span-4 flex justify-center md:justify-end items-center pr-2">
-          <div className="relative w-36 h-36 sm:w-44 sm:h-44 flex items-center justify-center">
-            {/* Green Ribbon Tails Behind Medal */}
-            <div
-              className="absolute -bottom-5 left-8 w-8 h-16 bg-[#166534] shadow-md z-0"
-              style={{
-                clipPath: 'polygon(0 0, 100% 0, 100% 100%, 50% 80%, 0 100%)',
-                transform: 'rotate(18deg)',
-              }}
-            />
-            <div
-              className="absolute -bottom-5 right-8 w-8 h-16 bg-[#15803d] shadow-md z-0"
-              style={{
-                clipPath: 'polygon(0 0, 100% 0, 100% 100%, 50% 80%, 0 100%)',
-                transform: 'rotate(-18deg)',
-              }}
-            />
-
-            {/* Gold Scalloped Rosette Outer Medal */}
-            <div
-              className="relative z-10 w-32 h-32 sm:w-40 sm:h-40 rounded-full p-2 flex items-center justify-center shadow-lg"
-              style={{
-                background: 'radial-gradient(circle, #fef08a 0%, #eab308 60%, #ca8a04 100%)',
-                boxShadow: '0 8px 24px rgba(202, 138, 4, 0.35)',
-              }}
-            >
-              {/* Inner Circle with Stitching/Laurel Border */}
-              <div
-                className="w-full h-full rounded-full border-2 border-dashed border-[#a16207]/60 flex flex-col items-center justify-center text-center p-2"
-                style={{
-                  background: 'radial-gradient(circle, #fffbeb 0%, #fef3c7 70%, #fde68a 100%)',
-                }}
-              >
-                {/* Graduation Mortarboard Icon */}
-                <svg
-                  viewBox="0 0 24 24"
-                  className="w-7 h-7 sm:w-8 sm:h-8 text-slate-900 fill-current mb-1"
-                >
-                  <path d="M12 3L1 9L12 15L21 10.09V17H23V9M5 13.18V17.18C5 19.94 8.13 22 12 22C15.87 22 19 19.94 19 17.18V13.18L12 17L5 13.18Z" />
+        {/* BOTTOM SECTION: SIGNATURES & VERIFICATION METADATA */}
+        <div className="pt-2 sm:pt-4 border-t border-slate-200/80">
+          <div className="flex items-end justify-between px-2 sm:px-6">
+            
+            {/* Left Signature: Sri Harsha */}
+            <div className="text-center w-36 sm:w-48">
+              {/* Handwritten Signature SVG */}
+              <div className="flex justify-center mb-1">
+                <svg viewBox="0 0 160 45" className="w-28 sm:w-36 h-7 sm:h-9">
+                  <path
+                    d="M 12 30 C 22 14, 28 10, 36 28 C 42 36, 48 30, 56 16 C 62 7, 68 28, 76 24 C 84 19, 90 32, 102 22 C 112 14, 122 30, 142 16"
+                    fill="none"
+                    stroke="#041E42"
+                    strokeWidth="2.2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
                 </svg>
-
-                {/* Badge Title */}
-                <span className="text-[9px] sm:text-[11px] font-black tracking-wider text-slate-900 uppercase leading-tight px-1">
-                  COURSE COMPLETED
-                </span>
-
-                {/* Stars */}
-                <div className="flex items-center gap-1 text-[#ca8a04] text-[10px] mt-1">
-                  <span>★</span>
-                  <span className="text-xs">★</span>
-                  <span>★</span>
-                </div>
+              </div>
+              <div className="w-full h-[1.5px] bg-slate-800 mb-1" />
+              <div className="text-xs sm:text-sm font-extrabold text-slate-900 tracking-wider">
+                SRI HARSHA
+              </div>
+              <div className="text-[10px] sm:text-xs text-slate-600 font-medium">
+                VP Solutions
               </div>
             </div>
-          </div>
-        </div>
-      </div>
 
-      {/* 6. SKILL BADGES HORIZONTAL ROW */}
-      <div className="relative z-10 py-3 border-t border-b border-slate-150">
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 items-center">
-          {skills.map((skill, idx) => (
-            <div key={skill.name} className="flex items-center gap-2.5">
-              {idx > 0 && <div className="hidden sm:block h-7 w-[1px] bg-slate-200 -ml-1.5 mr-1" />}
-              {/* Green Circular Icon */}
-              <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-emerald-50 border border-emerald-200 flex items-center justify-center text-[#16a34a] shrink-0">
-                {skill.type === 'react' && (
-                  <svg className="w-4 h-4 stroke-current" viewBox="0 0 24 24" fill="none" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                    <polyline points="16 18 22 12 16 6" />
-                    <polyline points="8 6 2 12 8 18" />
-                  </svg>
-                )}
-                {skill.type === 'node' && (
-                  <svg className="w-4 h-4 stroke-current" viewBox="0 0 24 24" fill="none" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                    <rect x="2" y="2" width="20" height="8" rx="2" ry="2" />
-                    <rect x="2" y="14" width="20" height="8" rx="2" ry="2" />
-                    <line x1="6" y1="6" x2="6.01" y2="6" />
-                    <line x1="6" y1="18" x2="6.01" y2="18" />
-                  </svg>
-                )}
-                {skill.type === 'postgres' && (
-                  <svg className="w-4 h-4 stroke-current" viewBox="0 0 24 24" fill="none" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                    <ellipse cx="12" cy="5" rx="9" ry="3" />
-                    <path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3" />
-                    <path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5" />
-                  </svg>
-                )}
-                {(skill.type === 'typescript' || skill.type === 'code' || skill.type === 'database') && (
-                  <svg className="w-4 h-4 stroke-current" viewBox="0 0 24 24" fill="none" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z" />
-                  </svg>
-                )}
+            {/* Center: Certificate ID & Date Stamp */}
+            <div className="text-center pb-1 space-y-0.5">
+              <div className="text-[10px] sm:text-[11px] font-mono font-bold text-slate-700">
+                Certificate ID: <span className="text-[#0B2545]">{certificateNumber}</span>
               </div>
-
-              {/* Text */}
-              <div className="leading-tight">
-                <div className="text-xs sm:text-sm font-bold text-slate-900">{skill.name}</div>
-                <div className="text-[10px] sm:text-[11px] font-medium text-slate-500">{skill.category}</div>
+              <div className="text-[9px] sm:text-[10px] text-slate-500 font-medium">
+                Issued Date: {formattedDate}
+              </div>
+              <div className="text-[8px] sm:text-[9px] text-emerald-700 font-bold flex items-center justify-center gap-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                <span>Verified InGage Credential</span>
               </div>
             </div>
-          ))}
-        </div>
-      </div>
 
-      {/* 7. FOOTER: MOTIVATIONAL LINE (LEFT) | INSTRUCTOR SIGNATURE (RIGHT) */}
-      <div className="relative z-10 flex flex-col sm:flex-row items-start sm:items-end justify-between gap-4 pt-3">
-        {/* Motivational Line */}
-        <div className="space-y-0.5">
-          <p className="text-xs sm:text-sm font-medium text-slate-700">
-            Keep building, keep growing.
-          </p>
-          <p className="text-xs sm:text-sm font-medium text-slate-700">
-            Your next chapter is just the beginning!
-          </p>
-        </div>
+            {/* Right Signature: Vijay Karunakaran */}
+            <div className="text-center w-36 sm:w-48">
+              {/* Handwritten Signature SVG */}
+              <div className="flex justify-center mb-1">
+                <svg viewBox="0 0 160 45" className="w-28 sm:w-36 h-7 sm:h-9">
+                  <path
+                    d="M 10 24 C 20 8, 30 12, 38 28 C 48 34, 52 14, 64 26 C 72 32, 85 10, 96 28 C 108 36, 120 18, 145 22"
+                    fill="none"
+                    stroke="#041E42"
+                    strokeWidth="2.2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+              </div>
+              <div className="w-full h-[1.5px] bg-slate-800 mb-1" />
+              <div className="text-xs sm:text-sm font-extrabold text-slate-900 tracking-wider">
+                VIJAY KARUNAKARAN
+              </div>
+              <div className="text-[10px] sm:text-xs text-slate-600 font-medium">
+                Chief Executive Officer
+              </div>
+            </div>
 
-        {/* Instructor Handwritten Signature */}
-        <div className="text-right self-end sm:self-auto space-y-1">
-          {/* Authentic Handwritten Signature SVG */}
-          <div className="flex justify-end pr-2">
-            <svg viewBox="0 0 160 45" className="w-32 h-9 sm:w-40 sm:h-11">
-              <path
-                d="M 10 32 C 25 10, 32 8, 40 28 C 45 38, 52 32, 60 18 C 65 8, 70 30, 80 25 C 90 20, 95 32, 110 22 C 120 15, 130 35, 150 18"
-                fill="none"
-                stroke="#0f172a"
-                strokeWidth="2.2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            </svg>
-          </div>
-
-          <div className="text-sm sm:text-base font-bold text-slate-900 leading-none">
-            {instructorName}
-          </div>
-          <div className="text-[11px] sm:text-xs text-slate-500 font-medium">
-            Instructor, Ingage LMS
           </div>
         </div>
+
       </div>
     </div>
   );
 };
+
+export default IngageCertificate;

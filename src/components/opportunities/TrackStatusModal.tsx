@@ -32,7 +32,7 @@ export function TrackStatusModal({ opportunity, onClose }: TrackStatusModalProps
     {
       title: 'Ingage Credential Verification',
       date: 'Jan 26, 2025 • 02:15 PM',
-      description: 'Ingage LMS verified your SQL, Excel, and Python module certifications with an 85% role match score.',
+      description: 'InGage EduTech verified your SQL, Excel, and Python module certifications with an 85% role match score.',
       status: 'completed'
     },
     {

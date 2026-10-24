@@ -1,0 +1,1770 @@
+================================================================================
+INGAGE LMS — COMPLETE ENTERPRISE PROJECT DOCUMENTATION
+================================================================================
+Platform: InGage Learning Management System (nextjs-lms)
+Workspace: d:\Ingage project\nextjs-lms
+Documentation File: LMS_PROJECT_COMPLETE_DOCUMENTATION.txt
+Status: Comprehensive Technical Architecture & Source Code Specification
+Generated Date: 2026-10-09
+Architecture: Next.js 16 App Router (React 19 + TypeScript + Prisma + PostgreSQL)
+================================================================================
+
+TABLE OF CONTENTS:
+--------------------------------------------------------------------------------
+ 1. PROJECT OVERVIEW
+ 2. ACTUAL TECHNOLOGY STACK
+ 3. ARCHITECTURE OVERVIEW
+ 4. COMPLETE PROJECT FOLDER STRUCTURE
+ 5. IMPORTANT FILES AND THEIR RESPONSIBILITIES
+ 6. FRONTEND ARCHITECTURE
+ 7. BACKEND ARCHITECTURE
+ 8. COMPLETE PAGE AND ROUTE INVENTORY
+ 9. USER ROLES AND PERMISSIONS
+10. AUTHENTICATION AND AUTHORIZATION
+11. ADMIN WORKFLOW
+12. STUDENT WORKFLOW
+13. COURSE AND MODULE MANAGEMENT
+14. VIDEO AND LESSON MANAGEMENT
+15. QUIZ MANAGEMENT AND ATTEMPTS
+16. PROJECT MANAGEMENT AND SUBMISSIONS
+17. LIVE CLASS MANAGEMENT
+18. ENROLLMENT AND PAYMENT WORKFLOW
+19. LEARNING PROGRESS TRACKING
+20. REPORTS AND CERTIFICATION
+21. DATABASE TABLES AND MODELS
+22. DATABASE RELATIONSHIPS AND ASCII ER DIAGRAM
+23. COMPLETE API INVENTORY
+24. FRONTEND-TO-BACKEND DATA FLOW
+25. STATE MANAGEMENT AND DATA FETCHING
+26. THIRD-PARTY INTEGRATIONS
+27. ENVIRONMENT CONFIGURATION
+28. LOCAL DEVELOPMENT AND DEPLOYMENT
+29. VALIDATION AND ERROR HANDLING
+30. EXISTING ISSUES AND MISSING FEATURES
+31. END-TO-END WORKFLOW DIAGRAMS
+32. SECURITY AND ACCESS-CONTROL OBSERVATIONS
+33. TESTING AND BUILD CONFIGURATION
+34. COMPLETE FEATURE INVENTORY
+35. DOCUMENTATION COVERAGE AND LIMITATIONS
+
+================================================================================
+1. PROJECT OVERVIEW
+================================================================================
+- Project Name: InGage LMS (Enterprise Learning Management System)
+- Workspace Folder: d:\Ingage project\nextjs-lms
+- Project Purpose: A unified, full-stack enterprise learning platform delivering
+  self-paced video courses, interactive knowledge checks, timed quiz assessments,
+  capstone project submissions, live instructor-led webinars, career pathways,
+  credential skill badges, and cryptographically verifiable PDF certificates.
+- Dual-Engine Architectural Model:
+  1. Student / Consumer Portal:
+     - Public landing page, course discovery catalog, and career roadmap exploration.
+     - Interactive course checkout with Razorpay payment processing and coupon engine.
+     - Student learning classroom (/courses/[id]/learn) with modular video player,
+       HTTP 206 partial content streaming, 10-second skip overlay, auto-resume,
+       timed quizzes with attempt counting and network issue resiliency, capstone
+       project submissions, and live webinar attendance.
+     - Personalized Student Dashboard (/my-courses, /dashboard, /my-learning)
+       with real-time progress tracking, weekly goals, enrolled tracks, and badges.
+     - Verified Certificate Viewer and PDF Downloader (/certificates, /certificates/[id],
+       and public verification portal at /certificate/verify/[code]).
+  2. Administrative Operations Portal (/admin):
+     - Comprehensive administration dashboard with platform analytics, revenue,
+       user enrollment statistics, and recent activity audit logs.
+     - Curriculum Studio & Course Builder: title-only fast module creation, draft/publish
+       lifecycle, multi-tab curriculum builder (Videos, Quizzes, Projects, Live Classes),
+       media uploading with automated duration detection, and drag-and-drop sequencing.
+     - Assessment Engine: Question banks with multiple-choice options, answer keys,
+       explanations, time limits, passing scores, and attempt limit restrictions.
+     - Operations & Commerce Management: Orders audit, transaction monitoring,
+       discount coupon management, opportunity board, and granular user role control.
+
+================================================================================
+2. ACTUAL TECHNOLOGY STACK
+================================================================================
+Frontend Technologies:
+- Next.js: 16.3.6 (App Router with Server Components and Client Components)
+- React: 19.2.8 & React DOM: 19.2.8
+- TypeScript: 5.x (Strict mode enabled in tsconfig.json)
+- Tailwind CSS: 4.x (@tailwindcss/postcss) for utility-first responsive styling
+- Lucide React: 0.546.0 for modern vector UI iconography
+- Motion (Framer Motion): 13.4.4 for UI micro-animations and transition states
+- Axios: 1.20.0 (API client configured with Bearer JWT interceptors in src/api)
+- Redux Toolkit: 2.12.0 & React-Redux: 9.3.0 for global client state management
+- jsPDF: 4.2.1 & html2canvas: 1.4.1 for client-side verifiable certificate generation
+- Native Web APIs: HTML5 Video Element, Media Source Extensions, Crypto Subtle
+
+Backend Technologies:
+- Next.js Route Handlers: 129 RESTful API endpoints located under src/app/api
+- Edge Middleware: src/middleware.ts (Edge runtime JWT validation with Web Crypto)
+- Node.js Runtime: Node.js >= 20.19.0 (engines specification in package.json)
+- Prisma ORM: 7.10.0 (@prisma/client, @prisma/adapter-pg)
+- PostgreSQL Driver: pg 8.23.0 with connection pooling via pg.Pool
+- Database Engine: PostgreSQL hosted in AWS us-east-1 (via Supabase transaction pooler)
+- Password Encryption: bcryptjs 3.0.3 (10 salt rounds for secure one-way hashing)
+- JWT Token Engine: jsonwebtoken 9.0.3 (HMAC SHA-256 with 24-hour expiration)
+- Payment Gateway: Razorpay Node SDK 2.9.8 + Razorpay Web Checkout JS
+- Native Node.js crypto module: Used for HMAC-SHA256 Razorpay signature verification
+- File Storage System: Node.js fs/path streaming with HTTP 206 Partial Content Range
+
+================================================================================
+3. ARCHITECTURE OVERVIEW
+================================================================================
+The InGage LMS architecture is a modern, unified monolithic full-stack application
+built entirely inside the Next.js App Router framework. It integrates client-side
+rendering, server-side data fetching, edge security middleware, RESTful API route
+handlers, and direct database persistence through Prisma ORM.
+
+Architecture Layering:
+1. Edge Middleware Layer (src/middleware.ts):
+   - Intercepts incoming HTTP requests at the edge.
+   - Extracts authorization tokens from Authorization header (Bearer) or AUTH_TOKEN cookie.
+   - Verifies JWT signatures using Web Crypto API (crypto.subtle).
+   - Enforces the strict Role-Based Route Matrix:
+     * Unauthenticated users -> Redirected to /login?redirect=<target>
+     * Authenticated ADMIN users attempting to access student checkout -> Redirected to /admin
+     * Authenticated STUDENT users attempting to access /admin -> Redirected to /my-courses
+     * Root URL (/) -> Redirects ADMIN to /admin, STUDENT to /my-courses, or renders Landing Page if guest.
+2. Presentation / UI Layer (src/app, src/views, src/components, src/admin):
+   - Server Components for SEO, layout structures, and metadata tags.
+   - Client Components ('use client') for interactive learning, video player controls,
+     quiz taking, drag-and-drop curriculum builder, and real-time state sync.
+3. State & API Client Layer (src/store, src/context, src/api):
+   - Redux Toolkit manages slices: auth, courses, careers, certificates, projects, opportunities.
+   - React Context (AuthContext) manages active user state and authentication lifecycle.
+   - Axios instance in src/api/authApi.ts automatically attaches Bearer tokens.
+4. Backend API Route Handlers (src/app/api):
+   - RESTful API handlers for courses, curriculum, quizzes, projects, live classes,
+     enrollments, payments, analytics, certificates, and administration.
+   - Uses getSessionUser() and requireAdmin() helper functions in src/lib/auth.ts.
+5. Data Access Layer (src/lib/prisma.ts, src/generated/prisma):
+   - Prisma Client 7.10.0 initialized with @prisma/adapter-pg over connection pooling.
+   - Communicates with PostgreSQL database instance.
+
+================================================================================
+4. COMPLETE PROJECT FOLDER STRUCTURE
+================================================================================
+d:\Ingage project\nextjs-lms
+├── .agents/                        # IDE agent configurations
+├── .claude/                        # Assistant configuration files
+├── .env                            # Active environment variables (Database, JWT, Razorpay)
+├── .env.example                    # Template environment variables
+├── .env.local                      # Local overrides for development environment
+├── .gitignore                      # Git ignore rules (node_modules, builds, uploads/videos)
+├── .next/                          # Next.js build cache and compilation outputs
+├── AGENTS.md                       # Project agent instructions and guidelines
+├── CLAUDE.md                       # Assistant guidelines
+├── eslint.config.mjs               # ESLint 9 configuration
+├── next.config.ts                  # Next.js framework configuration
+├── package.json                    # Project dependencies, scripts, and engine constraints
+├── package-lock.json               # Locked dependency tree
+├── postcss.config.mjs              # PostCSS plugins for Tailwind CSS 4
+├── prisma/
+│   ├── schema.prisma               # Complete database schema (51 models, PostgreSQL datasource)
+│   ├── migrations/                 # Database migration history
+│   └── seed.ts                     # Database seeding utilities
+├── prisma.config.ts                # Prisma CLI configuration
+├── prisma7.config.ts               # Prisma 7 adapter configuration
+├── public/
+│   ├── favicon.ico                 # InGage LMS browser favicon
+│   ├── images/                     # Static marketing and curriculum images
+│   ├── logos/                      # InGage brand SVG/PNG assets
+│   └── uploads/                    # Mirrored public file storage for avatars and documents
+├── src/
+│   ├── admin/                      # Dedicated Administrative Operations Portal
+│   │   ├── AdminLayout.tsx         # Admin dashboard frame with responsive header & sidebar
+│   │   ├── AdminSidebar.tsx        # Collapsible admin navigation menu with permission checks
+│   │   ├── components/             # Admin management widgets and builders
+│   │   │   ├── AdminCourseContentManager.tsx # Full-featured curriculum editor
+│   │   │   ├── AdminCurriculumBuilder.tsx    # Section and module creation container
+│   │   │   └── curriculum/         # Tab managers for curriculum assets
+│   │   │       ├── LiveClassesTabManager.tsx   # Admin live class schedule & meeting URLs
+│   │   │       ├── ModuleLiveClassesManager.tsx# In-module webinar scheduler
+│   │   │       ├── ModuleProjectsManager.tsx   # Capstone project assignment manager
+│   │   │       ├── ModuleQuizManager.tsx       # In-module quiz and question editor
+│   │   │       ├── ModuleVideosManager.tsx     # In-module video lesson uploader & streamer
+│   │   │       ├── ProjectsTabManager.tsx      # Global projects manager tab
+│   │   │       ├── QuizzesTabManager.tsx       # Quiz builder (questions, options, timer, limits)
+│   │   │       └── VideosTabManager.tsx        # Video library manager with auto-duration
+│   │   └── pages/                  # Admin page view components
+│   │       ├── AdminActivityLogsPage.tsx       # Security & administrative audit trails
+│   │       ├── AdminAddCoursePage.tsx          # Comprehensive course creation & edit studio
+│   │       ├── AdminCareerCoursesPage.tsx      # Career tracks course linking
+│   │       ├── AdminCareersPage.tsx            # Career tracks CRUD and pricing
+│   │       ├── AdminCategoriesPage.tsx         # Course categories taxonomy
+│   │       ├── AdminCertificatesPage.tsx       # Certificate revocation and issuance audit
+│   │       ├── AdminContentStudioPage.tsx      # High-productivity content authoring suite
+│   │       ├── AdminCourseAnalyticsPage.tsx    # Course enrollment & revenue metrics
+│   │       ├── AdminCourseProgressPage.tsx     # Student completion drill-down
+│   │       ├── AdminCoursesPage.tsx            # Course catalog grid with status filtering
+│   │       ├── AdminCredentialEdgePage.tsx     # Google/Partner skill badges manager
+│   │       ├── AdminDashboardPage.tsx          # Key performance indicators and stats
+│   │       ├── AdminDiscountsPage.tsx          # Discount coupon generator and usage caps
+│   │       ├── AdminGoogleCoursesPage.tsx      # Google Career Certificate course catalog
+│   │       ├── AdminInGageCoursesPage.tsx      # InGage native course catalog
+│   │       ├── AdminOpportunitiesPage.tsx      # Job board and career opportunities
+│   │       ├── AdminOrdersPage.tsx             # Student orders audit and transaction status
+│   │       ├── AdminPaymentsPage.tsx           # Razorpay transaction log & verification
+│   │       ├── AdminProjectsPage.tsx           # Student capstone evaluation dashboard
+│   │       ├── AdminSettingsPage.tsx           # Global LMS branding and system settings
+│   │       ├── AdminUnauthorizedPage.tsx       # 403 Access Denied presentation screen
+│   │       ├── AdminUserDetailsPage.tsx        # Individual user drill-down & activity
+│   │       └── AdminUsersPage.tsx              # User accounts list and role management
+│   ├── api/                        # Client-side Axios API services
+│   │   ├── adminApi.ts             # Admin operations, courses, curriculum, users
+│   │   ├── authApi.ts              # Login, register, forgot-password, current session
+│   │   ├── careerApi.ts            # Career pathways and tracks catalog
+│   │   ├── certificateApi.ts       # Certificate claims, verification, downloads
+│   │   ├── communityApi.ts         # Student forum and peer discussions
+│   │   ├── courseApi.ts            # Public courses catalog and details
+│   │   ├── credentialApi.ts        # Credential edge programs and skill badges
+│   │   ├── exploreApi.ts           # Course exploration and taxonomy filters
+│   │   ├── masterClassApi.ts       # Specialized masterclasses and workshops
+│   │   ├── opportunityApi.ts       # Job applications and saved opportunities
+│   │   ├── paymentApi.ts           # Razorpay order generation and verification
+│   │   ├── prebooksApi.ts          # Course pre-booking reservations
+│   │   ├── profileApi.ts           # Student resume, skills, education, avatar
+│   │   ├── projectApi.ts           # Capstone project submissions and feedback
+│   │   └── quizApi.ts              # Quiz questions, answers submit, attempt tracking
+│   ├── app/                        # Next.js App Router routes & endpoints
+│   │   ├── layout.tsx              # Global root HTML structure & Redux/Context providers
+│   │   ├── page.tsx                # Public home page / Landing view
+│   │   ├── globals.css             # Tailwind CSS tokens, theme variables, custom scrollbars
+│   │   ├── admin/                  # Admin web routes (dashboard, courses, users, etc.)
+│   │   ├── api/                    # 129 RESTful route handler endpoints
+│   │   ├── courses/                # Course details and learning player routes
+│   │   ├── dashboard/              # Student overview dashboard
+│   │   ├── my-courses/             # Student enrolled courses view
+│   │   ├── certificates/           # Student certificates and verification
+│   │   ├── login/ & signup/        # Authentication pages
+│   │   └── ...                     # Additional student and program routes
+│   ├── components/                 # Reusable UI components
+│   │   ├── AppShell.tsx            # Application wrapper with header, sidebar, footer
+│   │   ├── AuthModal.tsx           # Split-screen modal for login/signup
+│   │   ├── CourseCard.tsx          # Standard course card widget
+│   │   ├── Header.tsx              # Global responsive header navigation
+│   │   ├── Footer.tsx              # Platform footer with legal & program links
+│   │   ├── ProtectedRoute.tsx      # Client-side route guard wrapper
+│   │   ├── QuizAssessmentView.tsx  # Timed quiz assessment player
+│   │   ├── LiveClassLessonView.tsx # Live webinar attendee view
+│   │   ├── ProjectLessonView.tsx   # Project instruction & submission view
+│   │   ├── certificate/            # Verifiable certificate rendering templates
+│   │   └── dashboard/              # Student dashboard widgets (goals, stats, tracks)
+│   ├── context/
+│   │   └── AuthContext.tsx         # Global user session context & login/logout state
+│   ├── generated/
+│   │   └── prisma/                 # Auto-generated Prisma client package
+│   ├── lib/
+│   │   ├── auth.ts                 # Server-side JWT sign, verify, and session lookup
+│   │   ├── prisma.ts               # Database singleton connection pooler
+│   │   ├── fileServer.ts           # HTTP 206 Partial Content Range streaming engine
+│   │   ├── certificateService.ts   # Course eligibility calculator & verification code generator
+│   │   └── utils.ts                # BigInt JSON serializer, formatting helpers
+│   ├── store/
+│   │   ├── index.ts                # Redux store configuration
+│   │   ├── hooks.ts                # Typed useAppDispatch and useAppSelector hooks
+│   │   └── slices/                 # Redux slices (auth, course, career, cert, etc.)
+│   ├── types/
+│   │   └── index.ts                # Shared TypeScript models and interfaces
+│   ├── utils/
+│   │   └── certificatePdfGenerator.ts # PDF export generator via html2canvas & jsPDF
+│   ├── views/                      # High-level full-page view components
+│   │   ├── CourseDetailPage.tsx    # Public course overview, syllabus, instructor, pricing
+│   │   ├── CourseLearnPage.tsx     # Student learning classroom (Video, Quiz, Project, Live)
+│   │   ├── LandingPage.tsx         # Platform landing page with hero, stats, features
+│   │   ├── StudentDashboardPage.tsx# Student learning hub and KPI metrics
+│   │   └── learn/
+│   │       ├── StudentQuizView.tsx       # Quiz table, attempt limits, network issue resiliency
+│   │       ├── StudentProjectView.tsx    # Capstone projects submission & status view
+│   │       └── StudentLiveClassesView.tsx# Webinar schedule and join session view
+│   └── middleware.ts               # Next.js Edge routing & security middleware
+└── uploads/                        # Local file uploads directory (videos, thumbnails, pdfs)
+
+================================================================================
+5. IMPORTANT FILES AND THEIR RESPONSIBILITIES
+================================================================================
+1. src/middleware.ts:
+   - Primary security boundary for the LMS platform.
+   - Verifies incoming JWT tokens using the Web Crypto API (crypto.subtle).
+   - Enforces role-based redirects: ADMIN users to /admin, STUDENT users to /my-courses.
+   - Secures API endpoints (/api/admin/* requires ADMIN; /api/profile/* requires login).
+
+2. src/lib/prisma.ts:
+   - PostgreSQL connection pooler and PrismaClient singleton.
+   - Configures @prisma/adapter-pg over pg.Pool.
+   - Bypasses SSL certificate rejection in hosted cloud database environments.
+
+3. src/lib/auth.ts:
+   - Backend authentication utility functions:
+     * hashPassword(password: string): Bcrypt 10 rounds hashing.
+     * comparePassword(password: string, hash: string): Password comparison.
+     * signToken(payload: TokenPayload): Issues 24-hour JWT token.
+     * verifyToken(token: string): Validates and decodes JWT payload.
+     * getSessionUser(req?: Request): Resolves authenticated user from DB via token.
+     * requireAdmin(req?: Request): Guards admin API endpoints with 401/403 responses.
+
+4. src/lib/fileServer.ts:
+   - Video and media streaming engine.
+   - Implements HTTP 206 Partial Content Range header parsing.
+   - Allows seamless seeking, timeline scrubbing, and high-performance video streaming.
+   - Searches local uploads roots (uploads, public/uploads) with directory traversal protection.
+
+5. src/lib/certificateService.ts:
+   - Course completion eligibility calculator.
+   - Evaluates video watch progress (100% of videos completed), quiz completion (100% passed),
+     and capstone project completion.
+   - Generates unique certificate numbers in format ING-YYYY-XXXXXX and verification codes.
+
+6. src/views/CourseLearnPage.tsx:
+   - Central learning environment for students.
+   - Houses the video player, curriculum sidebar, progress tracker, and dynamic tabs.
+   - Integrates 10-second skip overlay, centered next-video recommendation, and video resume.
+
+7. src/views/learn/StudentQuizView.tsx:
+   - Student Quiz List & Knowledge Checks view.
+   - Displays real-time attempt tracking in used / max format (e.g. 0/1, 1/1, 1/2, 2/2).
+   - Enforces Start button disablement when usedAttempts >= maxAttempts.
+   - Detects and represents attempts interrupted by network failures.
+   - Displays a small (?) icon with interactive popover explaining network interruption.
+
+8. src/admin/pages/AdminAddCoursePage.tsx & AdminContentStudioPage.tsx:
+   - Comprehensive course authoring studio for administrators.
+   - Multi-tab curriculum builder: Videos, Quizzes, Projects, Live Classes.
+   - Supports automated video duration detection, drag-and-drop reordering, and publishing.
+
+9. src/app/api/payments/create-order/route.ts & verify/route.ts:
+   - Commercial checkout and payment engine.
+   - Creates Razorpay order IDs and validates discount coupon codes against limits.
+   - Cryptographically verifies Razorpay payment signatures (HMAC-SHA256).
+   - Automatically provisions course and career track enrollments upon successful verification.
+
+10. src/context/AuthContext.tsx & src/store/slices/authSlice.ts:
+    - Global client-side authentication state.
+    - Synchronizes current user data, token persistence in localStorage and cookies,
+      and triggers real-time UI updates on login/logout.
+
+================================================================================
+6. FRONTEND ARCHITECTURE
+================================================================================
+
+6.1. FRONTEND TECHNOLOGY STACK
+--------------------------------------------------------------------------------
+The InGage LMS frontend is engineered as a unified, full-stack client-server
+application built on top of Next.js 16 and React 19. All technologies documented
+below have been verified directly against package.json and active source code:
+
+1. Core Framework & Runtime:
+   - Next.js: Version 16.3.6 (App Router paradigm with React Server Components
+     and Client Components marked with 'use client').
+   - React: Version 19.2.8 & React DOM: 19.2.8 (supports concurrent features,
+     useActionState, server components, and modern hydration models).
+   - TypeScript: Version 5.x (Strict type checking enabled in tsconfig.json
+     with path alias '@/*' resolving directly to './src/*').
+
+2. CSS Framework & Styling Engine:
+   - Tailwind CSS: Version 4.x configured via @tailwindcss/postcss (^4) in
+     postcss.config.mjs and imported in src/app/globals.css.
+   - Styling Approach: Utility-first CSS classes, CSS variables, and responsive
+     prefixes (sm:, md:, lg:, xl:, 2xl:) without third-party component frameworks.
+   - Design System Palette:
+     * Primary Emerald Brand: #00A86B, #008F5B, emerald-500, emerald-600.
+     * Accent Orange: #F97316, #EA580C (Buttons, quiz progress indicators).
+     * Accent Amber / Yellow: #FEF7D6, amber-500 (Quiz network notices, warning badges).
+     * Neutral Slate: slate-900 (deep dark surfaces), slate-50/100 (light dashboard backgrounds).
+     * Border / Dividers: border-slate-200/80, border-slate-100.
+
+3. UI Component Libraries & Iconography:
+   - Lucide React: Version 0.546.0 (High-performance tree-shakeable SVG icons
+     used universally across headers, sidebars, buttons, video player, and cards).
+   - Motion (Framer Motion): Version 13.4.4 (Powers micro-animations, slide-ins,
+     accordion transitions, and modal backdrop fades).
+
+4. State Management & Context Architecture:
+   - Redux Toolkit: Version 2.12.0 (@reduxjs/toolkit) with react-redux (9.3.0).
+     Store configured in src/store/index.ts with domain slices:
+     * authSlice: User credentials, authentication status, tokens.
+     * courseSlice: Enrolled courses, active lessons, playback timestamps, progress.
+     * careerSlice: Career pathways, enrollments, milestones.
+     * certificateSlice: Earned certificates, verification statuses.
+     * opportunitySlice: Job postings, filters, applications.
+     * projectSlice: Capstone project briefs and student submissions.
+   - React Context API:
+     * AuthContext (src/context/AuthContext.tsx): Manages currentUser, isAuthenticated,
+       login(), logout(), and AuthModal open/close states.
+
+5. API Communication & Data Fetching:
+   - Axios: Version 1.20.0 configured in src/api/authApi.ts with default interceptors
+     automatically attaching 'Authorization: Bearer <token>' to every outgoing request.
+   - Data Fetching Pattern: Client-side asynchronous fetching via useEffect and Redux
+     async thunks, with server components used for preliminary metadata and SEO.
+
+6. Media & Video Playback:
+   - Native HTML5 Video Element with custom overlay UI controls in CourseLearnPage.tsx.
+   - HTTP 206 Partial Content Range streaming support via Next.js route handlers.
+   - Features: Time tracking, timeline scrub, 10-second skip overlay, centered next-video card.
+
+7. Client-Side PDF Generation & Canvas Rendering:
+   - jsPDF (4.2.1) & html2canvas (1.4.1): Renders high-resolution vector and canvas
+     certificates on the client for direct PDF download in src/utils/certificatePdfGenerator.ts.
+
+8. Commercial & Payment Integration:
+   - Razorpay Web Checkout JS SDK dynamically injected into the client window during
+     checkout, communicating with backend order creation and verification APIs.
+
+9. Notifications & Toast System:
+   - Custom interactive toast system embedded in AppShell.tsx and CourseLearnPage.tsx
+     providing slide-in alerts with auto-dismiss timers for network and progress updates.
+
+
+6.2. ACTUAL FRONTEND FOLDER STRUCTURE
+--------------------------------------------------------------------------------
+The frontend source code is organized within the src/ directory:
+
+src/
+├── admin/                           # Administrative Operations Portal Frontend
+│   ├── AdminLayout.tsx              # Deep green responsive sidebar & top navbar layout
+│   ├── AdminSidebar.tsx             # Collapsible admin navigation menu
+│   ├── components/                  # Admin widgets and management components
+│   │   ├── AdminCourseContentManager.tsx # Multi-tab curriculum authoring container
+│   │   ├── AdminCurriculumBuilder.tsx    # Section and module creation wizard
+│   │   └── curriculum/              # Modular curriculum tab editors
+│   │       ├── VideosTabManager.tsx      # Video lesson manager with auto-duration
+│   │       ├── QuizzesTabManager.tsx     # Quiz builder (timer, passing score, questions)
+│   │       ├── ProjectsTabManager.tsx    # Capstone project assignment manager
+│   │       ├── LiveClassesTabManager.tsx  # Instructor webinar scheduler
+│   │       ├── ModuleVideosManager.tsx   # In-module video lesson editor
+│   │       ├── ModuleQuizManager.tsx     # In-module quiz and question editor
+│   │       ├── ModuleProjectsManager.tsx # In-module project assignment editor
+│   │       └── ModuleLiveClassesManager.tsx # In-module live class scheduler
+│   └── pages/                       # Admin page views
+│       ├── AdminDashboardPage.tsx        # KPI metrics, analytics, revenue charts
+│       ├── AdminCoursesPage.tsx          # Course catalog grid with status toggles
+│       ├── AdminAddCoursePage.tsx        # Comprehensive course creation & edit studio
+│       ├── AdminContentStudioPage.tsx    # Fast-entry content authoring studio
+│       ├── AdminCourseAnalyticsPage.tsx  # Course-level revenue & completion stats
+│       ├── AdminCourseProgressPage.tsx   # Student progress drilldown
+│       ├── AdminUsersPage.tsx            # User roster with role editor (STUDENT/ADMIN)
+│       ├── AdminOrdersPage.tsx           # Student transaction & order audit table
+│       ├── AdminCertificatesPage.tsx     # Certificate issuance audit and revocation
+│       ├── AdminDiscountsPage.tsx        # Promotional coupon generator & usage caps
+│       ├── AdminOpportunitiesPage.tsx    # Job board and career opportunities
+│       └── AdminSettingsPage.tsx         # Platform branding and parameters
+│
+├── api/                             # Client-side Axios API services
+│   ├── adminApi.ts                  # Admin courses, sections, lessons, users API calls
+│   ├── authApi.ts                   # Login, register, current session, Axios instance
+│   ├── courseApi.ts                 # Public course catalog and details
+│   ├── paymentApi.ts                # Course content, Razorpay orders, payments
+│   ├── quizApi.ts                   # Quiz questions, answers submit, attempt tracking
+│   ├── projectApi.ts                # Capstone project submissions and feedback
+│   ├── certificateApi.ts            # Certificate claims, verification, downloads
+│   ├── careerApi.ts                 # Career pathways and tracks catalog
+│   ├── opportunityApi.ts            # Job applications and saved opportunities
+│   └── profileApi.ts                # Student profile, resume, education, skills
+│
+├── app/                             # Next.js App Router Web Routes
+│   ├── layout.tsx                   # Root HTML layout, font setup, Providers wrapper
+│   ├── page.tsx                     # Landing Page view
+│   ├── globals.css                  # Global Tailwind CSS 4 styles
+│   ├── admin/                       # Admin web routes (/admin, /admin/courses, etc.)
+│   ├── courses/                     # Course routes (/courses, /courses/[id], /courses/[id]/learn)
+│   ├── my-courses/                  # Student enrolled courses view
+│   ├── dashboard/                   # Student dashboard overview
+│   ├── my-learning/                 # Student continuing education view
+│   ├── certificates/                # Certificate gallery and verification routes
+│   ├── live-classes/                # Webinar schedule and join routes
+│   ├── community/                   # Student forum and peer discussions
+│   ├── login/ & signup/             # Authentication routes
+│   └── ...                          # Program, career, and payment routes
+│
+├── components/                      # Reusable UI Presentation Components
+│   ├── AppShell.tsx                 # Master shell: manages public Header vs dedicated portals
+│   ├── Header.tsx                   # Responsive marketing navigation header
+│   ├── Footer.tsx                   # Marketing footer with links
+│   ├── AuthModal.tsx                # Split-screen modal for login and signup
+│   ├── CourseCard.tsx               # Reusable course card widget
+│   ├── ProtectedRoute.tsx           # Client-side route guard wrapper
+│   ├── Providers.tsx                # Redux Provider + AuthProvider wrapper
+│   ├── QuizAssessmentView.tsx       # Timed quiz assessment player
+│   ├── LiveClassLessonView.tsx      # Webinar attendee interface
+│   ├── ProjectLessonView.tsx        # Project instruction and submission view
+│   ├── StudentProjectReportView.tsx # Capstone project review and evaluation report
+│   ├── LearningAnalyticsReportView.tsx # Student course analytics report card
+│   ├── ScreenNavigator.tsx          # Floating development screen switcher
+│   ├── SuccessModal.tsx             # Post-action confirmation dialog
+│   ├── brand/                       # InGage brand logo components
+│   ├── certificate/                 # Certificate rendering templates
+│   ├── dashboard/                   # Student dashboard metric cards and sidebars
+│   └── layout/
+│       └── StudentLayout.tsx        # Comprehensive student dashboard layout
+│
+├── context/
+│   └── AuthContext.tsx              # React Context for user authentication & modal state
+│
+├── store/                           # Redux Toolkit Global State
+│   ├── index.ts                     # Redux store configuration
+│   ├── hooks.ts                     # Typed useAppDispatch and useAppSelector hooks
+│   └── slices/                      # Redux state slices (auth, course, career, etc.)
+│
+├── types/
+│   └── index.ts                     # Shared TypeScript interfaces (User, Course, Quiz)
+│
+├── utils/
+│   └── certificatePdfGenerator.ts   # Client-side PDF export generator
+│
+└── views/                           # High-level full-page view components
+    ├── LandingPage.tsx              # Public home page with hero and statistics
+    ├── CourseDetailPage.tsx         # Course overview, syllabus, instructor, checkout
+    ├── CourseLearnPage.tsx          # Full-screen interactive course classroom
+    ├── StudentDashboardPage.tsx     # Student learning metrics and tracks hub
+    └── learn/
+        ├── StudentQuizView.tsx      # Quiz table, attempt limits, network resiliency
+        ├── StudentProjectView.tsx   # Capstone project submission & status view
+        └── StudentLiveClassesView.tsx # Webinar schedule and join session view
+
+
+6.3. FRONTEND APPLICATION ARCHITECTURE
+--------------------------------------------------------------------------------
+The execution pipeline from browser request to rendered interface:
+
+1. Application Entry Point (src/app/layout.tsx):
+   - Initializes Inter font from next/font/google.
+   - Applies global CSS tokens from src/app/globals.css.
+   - Mounts <Providers> wrapping the entire document body.
+
+2. Provider Hierarchy (src/components/Providers.tsx):
+   - <Provider store={store}>: Injects Redux Toolkit store.
+   - <AuthProvider>: Injects React Context managing user credentials, login, logout.
+   - <AppShell>: Injects global layout coordination.
+
+3. Master Shell Coordination (src/components/AppShell.tsx):
+   - Detects pathname using usePathname().
+   - Determines layout classification:
+     * Admin Route (/admin/*): Dark theme styling, suppresses public header/footer.
+     * Student Portal Route (/my-courses, /dashboard, etc.): Light theme styling,
+       suppresses public header/footer, renders dedicated StudentLayout.
+     * Classroom Route (/courses/[id]/learn): Suppresses all headers/footers for
+       distraction-free learning.
+     * Public Route (/, /courses, /careers): Renders public <Header> and <Footer>.
+   - Renders global toast notification container.
+   - Renders <AuthModal> when triggered by navigation or login actions.
+
+4. Client-to-Server Architecture Diagram:
+
+   +-------------------------------------------------------------+
+   |                     BROWSER CLIENT                          |
+   +-------------------------------------------------------------+
+                                │
+                                ▼
+   +-------------------------------------------------------------+
+   |                  src/app/layout.tsx                         |
+   |              Inter Font + globals.css                       |
+   +-------------------------------------------------------------+
+                                │
+                                ▼
+   +-------------------------------------------------------------+
+   |               src/components/Providers.tsx                  |
+   |   [Redux Provider (store)]  -->  [AuthProvider (Context)]    |
+   +-------------------------------------------------------------+
+                                │
+                                ▼
+   +-------------------------------------------------------------+
+   |                 src/components/AppShell.tsx                 |
+   |   Pathname Inspection -> Conditional Header / Footer        |
+   |   Toast Notification Center + Global AuthModal              |
+   +-------------------------------------------------------------+
+         │                              │                      │
+         ▼ (Public Routes)              ▼ (/admin/*)           ▼ (/my-courses/*)
+   +---------------+             +---------------+      +------------------+
+   | Public Header |             |  AdminLayout  |      |  StudentLayout   |
+   | Public Footer |             |  AdminSidebar |      |  Student Sidebar |
+   | Landing/Course|             | Course Studio |      |  Dashboard/Learn |
+   +---------------+             +---------------+      +------------------+
+         │                              │                      │
+         └──────────────────────────────┴──────────────────────┘
+                                │
+                                ▼
+   +-------------------------------------------------------------+
+   |                 STATE & API INTEGRATION                     |
+   |   - Redux Toolkit Slices (courseSlice, authSlice)           |
+   |   - Axios API Client (src/api/authApi.ts with JWT Bearer)   |
+   +-------------------------------------------------------------+
+                                │
+                                ▼
+   +-------------------------------------------------------------+
+   |             BACKEND REST API ROUTE HANDLERS                 |
+   |               (/api/courses, /api/admin, /api/payments)     |
+   +-------------------------------------------------------------+
+
+
+6.4. COMPLETE PAGE AND ROUTE ARCHITECTURE
+--------------------------------------------------------------------------------
+Inventory of all primary frontend routes:
+
+Route: /
+- File: src/app/page.tsx
+- Component: LandingPage (src/views/LandingPage.tsx)
+- Layout: Public (Header + Footer via AppShell)
+- User Role: Public / Guest (Redirects ADMIN to /admin, STUDENT to /my-courses)
+- APIs Called: /api/courses, /api/careers, /api/explore
+
+Route: /courses
+- File: src/app/courses/page.tsx
+- Component: CoursesPage (src/views/CoursesPage.tsx)
+- Layout: Public (Header + Footer via AppShell)
+- User Role: Public
+- APIs Called: /api/courses, /api/explore
+
+Route: /courses/[id]
+- File: src/app/courses/[id]/page.tsx
+- Component: CourseDetailPage (src/views/CourseDetailPage.tsx)
+- Layout: Public (Header + Footer via AppShell)
+- User Role: Public / Authenticated Student
+- APIs Called: /api/courses/[id], /api/courses/[id]/access, /api/discounts/validate
+
+Route: /courses/[id]/learn
+- File: src/app/courses/[id]/learn/page.tsx
+- Component: CourseLearnPage (src/views/CourseLearnPage.tsx)
+- Layout: Fullscreen Dedicated Classroom Layout
+- User Role: Enrolled Student or Admin Preview
+- Components: HTML5 Video Player, StudentQuizView, StudentProjectView, StudentLiveClassesView
+- APIs Called: /api/courses/[id]/learn, /api/courses/[id]/content, /api/progress/save-progress,
+  /api/courses/[id]/quiz, /api/courses/[id]/quiz/submit, /api/certificates/claim/[id]
+
+Route: /my-courses
+- File: src/app/my-courses/page.tsx
+- Component: MyCoursesPage
+- Layout: StudentLayout (src/components/layout/StudentLayout.tsx)
+- User Role: Authenticated Student (ADMIN redirected to /admin)
+- APIs Called: /api/learning/my-enrollments, /api/dashboard
+
+Route: /dashboard
+- File: src/app/dashboard/page.tsx
+- Component: StudentDashboardPage (src/views/StudentDashboardPage.tsx)
+- Layout: StudentLayout
+- User Role: Authenticated Student
+- APIs Called: /api/dashboard, /api/learning/my-enrollments
+
+Route: /certificates
+- File: src/app/certificates/page.tsx
+- Component: CertificatesPage
+- Layout: StudentLayout
+- User Role: Authenticated Student
+- APIs Called: /api/certificates/my
+
+Route: /certificate/verify/[code]
+- File: src/app/certificate/verify/[code]/page.tsx
+- Component: CertificateVerificationPage (src/views/CertificateVerificationPage.tsx)
+- Layout: Public Minimal
+- User Role: Public
+- APIs Called: /api/certificates/verify/[code]
+
+Route: /admin
+- File: src/app/admin/page.tsx
+- Component: AdminDashboardPage (src/admin/pages/AdminDashboardPage.tsx)
+- Layout: AdminLayout (src/admin/AdminLayout.tsx)
+- User Role: ADMIN / SUPER_ADMIN (STUDENT redirected to /my-courses)
+- APIs Called: /api/admin/dashboard, /api/admin/dashboard/stats
+
+Route: /admin/courses
+- File: src/app/admin/courses/page.tsx
+- Component: AdminCoursesPage (src/admin/pages/AdminCoursesPage.tsx)
+- Layout: AdminLayout
+- User Role: ADMIN
+- APIs Called: /api/admin/courses, /api/admin/courses/[id]/publish
+
+Route: /admin/courses/new & /admin/courses/add
+- File: src/app/admin/courses/new/page.tsx
+- Component: AdminAddCoursePage (src/admin/pages/AdminAddCoursePage.tsx)
+- Layout: AdminLayout
+- User Role: ADMIN
+- Components: AdminCourseContentManager, VideosTabManager, QuizzesTabManager, ProjectsTabManager
+- APIs Called: /api/admin/courses, /api/admin/categories, /api/admin/media/upload
+
+Route: /admin/content-studio
+- File: src/app/admin/content-studio/page.tsx
+- Component: AdminContentStudioPage (src/admin/pages/AdminContentStudioPage.tsx)
+- Layout: AdminLayout
+- User Role: ADMIN
+- APIs Called: /api/admin/courses, /api/admin/sections, /api/admin/lessons
+
+
+6.5. ADMIN FRONTEND ARCHITECTURE
+--------------------------------------------------------------------------------
+The Admin frontend operates as an independent operations portal:
+
+1. Layout & Navigation (src/admin/AdminLayout.tsx & AdminSidebar.tsx):
+   - Sidebar Navigation Items: Dashboard, Courses, Users, Orders, Certificates,
+     Discounts, Opportunities, Activity Logs, Settings.
+   - Collapsible State: Controlled via collapsed boolean with smooth CSS width transition.
+   - Mobile Drawer: Controlled via mobileOpen boolean with backdrop overlay.
+   - Client Route Guard: Checks mounted, currentUser, and isAdminRole. Non-admin
+     users are immediately redirected to /my-courses without UI flicker.
+
+2. Course & Curriculum Authoring Studio (AdminCourseContentManager.tsx):
+   - Module Architecture: Manages curriculum modules (course_sections) and lessons.
+   - Four Dedicated Tabs:
+     * Videos Tab (VideosTabManager.tsx):
+       - Uploads video files directly via /api/admin/media/upload.
+       - Automatically detects video duration from metadata.
+       - Supports drag-and-drop sequencing and free preview toggles.
+     * Quizzes Tab (QuizzesTabManager.tsx):
+       - Configures quiz title, time limit, passing score, and max attempt limit.
+       - Multi-question editor: question text, 4 options, radio selector for correct answer,
+         and answer explanation field.
+     * Projects Tab (ProjectsTabManager.tsx):
+       - Sets assignment title, description, requirements, and submission guidelines.
+     * Live Classes Tab (LiveClassesTabManager.tsx):
+       - Schedules date, time, duration, instructor, and meeting URL (Google Meet/Zoom).
+   - State Ownership: AdminCourseContentManager maintains master sections state,
+     propagating changes asynchronously to the backend via adminApi.ts.
+
+
+6.6. STUDENT FRONTEND ARCHITECTURE
+--------------------------------------------------------------------------------
+The Student frontend is engineered for engagement, focus, and progress tracking:
+
+1. Student Dashboard Layout (src/components/layout/StudentLayout.tsx):
+   - Clean slate-50 background with collapsible sidebar navigation.
+   - Global search bar, notification badge dropdown, student profile dropdown.
+   - Enforces student authorization; blocks unauthenticated users to /login.
+
+2. Interactive Learning Classroom (src/views/CourseLearnPage.tsx):
+   - Video Player Architecture:
+     * HTML5 <video> element with custom UI controls.
+     * Fullscreen mode, volume sliders, playback speed selectors (0.75x, 1x, 1.25x, 1.5x, 2x).
+     * Auto-Resume: Automatically seeks to last_position_seconds loaded from lesson_progress.
+     * Periodic Autosave: Dispatches saveProgress() every 5 seconds to /api/progress/save-progress.
+     * 10-Second Skip Overlay: Displays interactive "Next Video" banner during final 10 seconds.
+     * Centered Autoplay Card: Appears on video completion recommending next lesson.
+   - Dynamic Classroom Tabs (StudentCourseTabs.tsx):
+     * 'videos': Active video lesson player and curriculum playlist.
+     * 'quizzes': StudentQuizView displaying knowledge checks table.
+     * 'projects': StudentProjectView displaying capstone project briefs and submission inputs.
+     * 'live': StudentLiveClassesView displaying upcoming webinars and launch buttons.
+     * 'analytics': LearningAnalyticsReportView displaying completion metrics and scores.
+     * 'certificates': Certificate preview and claim button.
+
+3. Student Quiz View (src/views/learn/StudentQuizView.tsx):
+   - Dynamic Attempt Tracking: Displays used / max attempts (e.g. 0/1, 1/1, 1/2, 2/2).
+   - Start Button Logic:
+     * Enabled when usedAttempts < maxAttempts.
+     * Visibly greyed out and non-clickable (pointer-events-none, aria-disabled="true")
+       when usedAttempts >= maxAttempts.
+   - Network Issue Resiliency:
+     * Automatically counts interrupted attempts as consumed.
+     * Displays small (?) question-mark icon next to Start button in Actions column.
+     * Tooltip popover: "This attempt was affected by a network issue while taking the quiz.
+       The attempt has been counted. Please contact support if you need a retake."
+     * (?) icon remains visible even when attempts are exhausted and Start is disabled.
+
+
+6.7. COMPONENT ARCHITECTURE & INVENTORY
+--------------------------------------------------------------------------------
+Major reusable components and their contracts:
+
+1. AppShell (src/components/AppShell.tsx):
+   - Responsibility: Top-level layout coordinator.
+   - Props: { children: React.ReactNode }
+   - State: toastMessage, pathname.
+   - Children: Header, Footer, ScreenNavigator, AuthModal, children.
+
+2. AuthModal (src/components/AuthModal.tsx):
+   - Responsibility: Split-screen authentication dialog.
+   - Props: { isOpen, initialMode, portalRole, onClose, onSuccess }
+   - State: mode ('login'|'signup'|'forgot-password'), email, password, name, error, loading.
+   - APIs: authApi.login(), authApi.register(), authApi.forgotPassword().
+
+3. Header (src/components/Header.tsx):
+   - Responsibility: Public responsive marketing header.
+   - Props: { currentPath, onNavigate, currentUser, onOpenAuth, onLogout }
+   - State: mobileMenuOpen, isScrolled, courseDropdownOpen.
+
+4. StudentLayout (src/components/layout/StudentLayout.tsx):
+   - Responsibility: Master layout frame for authenticated students.
+   - Props: { children, activePath, requireAuth }
+   - State: isCollapsed, isMobileOpen, isProfileDropdownOpen, searchQuery.
+
+5. CourseLearnPage (src/views/CourseLearnPage.tsx):
+   - Responsibility: Master classroom container.
+   - Props: { courseId, onNavigate, onShowToast }
+   - State: activeTab, activeLessonId, isPlaying, currentTime, duration, completedLessonIds.
+   - Children: StudentCourseHeader, StudentCourseTabs, StudentEMCSidebar, StudentQuizView,
+     StudentProjectView, StudentLiveClassesView, QuizAssessmentView, CertificateViewModal.
+
+6. StudentQuizView (src/views/learn/StudentQuizView.tsx):
+   - Responsibility: Knowledge check quiz table, attempt limits, network handling.
+   - Props: { courseId, quizzes, completedLessonIds, onStartQuiz, onQuizCompleted }
+   - State: expandedIds, hoveredTooltipQuizId, activeTooltipQuizId, currentIdx, answers.
+
+7. AdminCourseContentManager (src/admin/components/AdminCourseContentManager.tsx):
+   - Responsibility: Full curriculum editing workspace.
+   - Props: { courseId, onCourseUpdated }
+   - State: activeTab ('videos'|'quizzes'|'projects'|'live'), sections, isSaving.
+   - Children: VideosTabManager, QuizzesTabManager, ProjectsTabManager, LiveClassesTabManager.
+
+
+6.8. STATE MANAGEMENT ARCHITECTURE
+--------------------------------------------------------------------------------
+The LMS utilizes a coordinated three-tier state architecture:
+
+1. Redux Toolkit (src/store/index.ts):
+   - Configured with configureStore({ reducer: { auth, course, career, ... } }).
+   - Typed Hooks: useAppDispatch and useAppSelector exported from src/store/hooks.ts.
+   - authSlice:
+     * State: { user: UserProfile | null, token: string | null, isAuthenticated: boolean }.
+     * Thunks: loginUserThunk, registerUserThunk, logoutUserThunk.
+     * Persistence: Synchronizes token in localStorage and cookies.
+   - courseSlice:
+     * State: { activeLessonId, completedLessonIds: number[], courseProgress: number }.
+     * Thunks: completeLessonThunk, saveLessonProgressThunk.
+
+2. React Context (src/context/AuthContext.tsx):
+   - Provides useAuth() hook.
+   - Exposes: currentUser, isAuthenticated, isAuthLoading, login, logout,
+     openAuthModal, closeAuthModal, isAuthModalOpen, authModalMode.
+
+3. Component Local State (useState, useReducer, useRef):
+   - Manages video player timestamps, UI active tabs, accordion open/close,
+     quiz answer selections, and tooltip hover states.
+
+
+6.9. FRONTEND API COMMUNICATION
+--------------------------------------------------------------------------------
+1. Axios Instance Configuration (src/api/authApi.ts):
+   - Created with axios.create({ baseURL: process.env.NEXT_PUBLIC_API_URL || '' }).
+   - Request Interceptor:
+     * Retrieves token from localStorage.getItem('token') or cookies.
+     * Injects 'Authorization: Bearer <token>' header into every request.
+   - Response Interceptor:
+     * Catches HTTP 401 Unauthorized errors and dispatches session expiration handlers.
+
+2. End-to-End Execution Chain Example:
+   User clicks "Submit Quiz" in StudentQuizView.tsx
+   ──► handleAttemptSubmit() event handler triggers in React component
+   ──► quizApi.submitQuizAnswer(courseId, lessonId, payload) invoked
+   ──► Axios POST to /api/courses/[id]/quiz/submit?lessonId=[lessonId]
+   ──► Backend Route Handler verifies JWT, grades answers, updates lesson_progress
+   ──► JSON Response returned with { score, passed, attemptCount, hasNetworkIssue }
+   ──► React local state updates result view; Redux dispatches progress refresh
+   ──► UI displays score modal, updates attempt count to 1/1, and disables Start button.
+
+
+6.10. AUTHENTICATION AND ROUTE PROTECTION
+--------------------------------------------------------------------------------
+1. Edge Middleware Boundary (src/middleware.ts):
+   - Evaluates incoming HTTP requests before React rendering starts.
+   - Verifies JWT signatures with Web Crypto API (crypto.subtle).
+   - Redirects unauthenticated requests to /login?redirect=<target>.
+   - Redirects authenticated ADMIN users attempting student routes to /admin.
+   - Redirects authenticated STUDENT users attempting admin routes to /my-courses.
+
+2. Client-Side Defense-in-Depth Guards:
+   - AdminLayout (src/admin/AdminLayout.tsx):
+     * Checks mounted, currentUser, and isAdminRole.
+     * If user is not admin, replaces window.location with '/my-courses'.
+   - StudentLayout (src/components/layout/StudentLayout.tsx):
+     * Checks mounted, currentUser, and role.
+     * If admin user accesses /my-courses, replaces window.location with '/admin'.
+   - ProtectedRoute (src/components/ProtectedRoute.tsx):
+     * Reusable wrapper component enforcing role authorization and loading spinners.
+
+
+6.11. FRONTEND DATA FLOW TRACES
+--------------------------------------------------------------------------------
+Workflow A: Admin Creates Course & Adds Modules
+- Admin inputs course title in AdminAddCoursePage.tsx.
+- Clicks "Create Course" ──► adminApi.createCourse() ──► POST /api/admin/courses.
+- Response returns new course ID. Admin switches to Curriculum tab.
+- Clicks "Add Module" ──► adminApi.createSection() ──► POST /api/admin/courses/[id]/sections.
+- Module renders in UI; Admin uploads video ──► POST /api/admin/media/upload.
+- Lesson metadata saved ──► POST /api/admin/sections/[id]/lessons.
+
+Workflow B: Student Watches Video Lesson
+- Student selects video in CourseLearnPage.tsx.
+- HTML5 <video> requests /api/uploads/video with HTTP Range headers.
+- Player streams chunked video; onTimeUpdate dispatches periodic saveProgress().
+- At 90% watch duration, POST /api/progress/save-progress marks completed = true.
+- Redux completedLessonIds array updates; sidebar item displays green checkmark.
+
+Workflow C: Student Quizzes with Attempt Limits & Network Interruption
+- Student opens Quizzes tab in CourseLearnPage.tsx.
+- StudentQuizView renders quiz row with attempt count (e.g. 0/1).
+- Student clicks Start; QuizAssessmentView loads questions from /api/courses/[id]/quiz.
+- Student completes answers and submits.
+- If network connection fails: catch block catches network error, flags hasNetworkIssue: true,
+  marks attempt as used locally, queues background sync, and returns to quiz list.
+- Quiz list shows 1/1, Start button disabled (grey), small (?) icon visible with tooltip.
+
+
+6.12. UI, STYLING, AND RESPONSIVE DESIGN
+--------------------------------------------------------------------------------
+1. Utility Styling & Global Tokens:
+   - Built with Tailwind CSS 4 in src/app/globals.css.
+   - Typography: Latin Inter font loaded via next/font/google.
+   - Responsive Breakpoints:
+     * Mobile (< 640px): Collapsible hamburger drawers, single-column cards.
+     * Tablet (640px - 1024px): 2-column course grids, collapsible sidebars.
+     * Desktop (> 1024px): 3-column course cards, persistent sidebars, multi-tab studios.
+2. Micro-Interactions & States:
+   - Hover effects: hover:bg-slate-100, hover:scale-[1.02], hover:shadow-md.
+   - Button states: active:scale-95, disabled:opacity-50, cursor-not-allowed.
+   - Loading States: Loader2 animated spin icons, pulse skeleton placeholders.
+
+
+6.13. FRONTEND-TO-BACKEND ARCHITECTURE DIAGRAM
+--------------------------------------------------------------------------------
+
+USER (Browser Interaction)
+  │
+  ▼
+FRONTEND ROUTE (/courses/[id]/learn, /admin/courses, /my-courses)
+  │
+  ▼
+PAGE & LAYOUT (RootLayout -> Providers -> AppShell -> StudentLayout / AdminLayout)
+  │
+  ▼
+FEATURE COMPONENT (CourseLearnPage, StudentQuizView, AdminCourseContentManager)
+  │
+  ▼
+STATE & EVENT HANDLER (handleStartAssessment, handleFinalSubmit, saveProgress)
+  │
+  ▼
+API CLIENT (src/api/authApi.ts Axios with JWT Bearer Token)
+  │
+  ▼
+EDGE MIDDLEWARE (src/middleware.ts Web Crypto HMAC-SHA256 Token Validation)
+  │
+  ▼
+BACKEND ROUTE HANDLER (src/app/api/courses/[id]/quiz/submit/route.ts)
+  │
+  ▼
+SERVICE & DATABASE (src/lib/prisma.ts -> PostgreSQL Database)
+  │
+  ▼
+API RESPONSE (Serialized JSON with BigInt stringification)
+  │
+  ▼
+FRONTEND STATE UPDATE (React useState + Redux Toolkit Slice update)
+  │
+  ▼
+RENDERED UI (Green Checkmarks, Attempt Count 1/1, Disabled Start Button, (?) Icon)
+
+
+6.14. FRONTEND DEPENDENCIES AND CONFIGURATION
+--------------------------------------------------------------------------------
+1. package.json Configuration:
+   - Next.js: 16.3.6, React: 19.2.8, React DOM: 19.2.8.
+   - Tailwind CSS: 4.x, PostCSS: @tailwindcss/postcss.
+   - Scripts: "dev": "next dev", "build": "prisma generate && next build", "lint": "eslint".
+2. tsconfig.json:
+   - "target": "ES2017", "strict": true, "jsx": "preserve".
+   - "paths": { "@/*": ["./src/*"] } ensures clean root imports across the project.
+3. next.config.ts:
+   - Configured for Next.js App Router with standalone output compatibility.
+4. Environment Variables (Frontend Scope):
+   - NEXT_PUBLIC_API_URL: Public base URL for API communication.
+   - NEXT_PUBLIC_RAZORPAY_KEY_ID: Public Razorpay key identifier for client checkout modal.
+   - NEXT_PUBLIC_BASE_URL: Application host URL (e.g. http://localhost:3000).
+
+
+6.15. FRONTEND ISSUES AND VERIFICATION
+--------------------------------------------------------------------------------
+Identified through rigorous code inspection:
+1. Floating Development Screen Navigator:
+   - Status: Confirmed in code.
+   - Evidence: src/components/ScreenNavigator.tsx is rendered in AppShell for development
+     switching. Should be disabled in strict production deployments.
+2. In-Memory Video Uploads vs Ephemeral Serverless:
+   - Status: Confirmed in code.
+   - Evidence: Uploaded videos in Admin studio are saved to local filesystem (uploads/videos).
+     On serverless platforms (Vercel), local files do not persist across redeployments;
+     production requires AWS S3 or Cloudflare R2 object storage.
+3. Multiple Concurrent Course Video Players:
+   - Status: Confirmed in code.
+   - Evidence: CourseLearnPage implements full custom player, while LearningPlayerPage.tsx
+     exists as an alternate legacy player view.
+4. TypeScript Build Verification:
+   - Status: Confirmed.
+   - Evidence: npx tsc --noEmit executes with 0 compilation errors across all frontend files.
+
+================================================================================
+7. BACKEND ARCHITECTURE
+================================================================================
+The backend consists of 129 RESTful Next.js Route Handlers (src/app/api):
+- Request Lifecycle:
+  1. Request reaches Next.js Edge Middleware (src/middleware.ts).
+  2. Middleware validates path patterns, extracts JWT token, and checks permissions.
+  3. Valid requests proceed to the corresponding Route Handler in src/app/api.
+  4. The handler calls getSessionUser(req) or requireAdmin(req) from src/lib/auth.ts.
+  5. Business logic interacts with PostgreSQL through the Prisma ORM singleton (src/lib/prisma.ts).
+  6. BigInt identifiers and decimal values are serialized using serializeData(data).
+  7. A JSON response with standard HTTP status codes (200, 201, 400, 401, 403, 404, 500) is returned.
+- Service Layer Pattern:
+  * Authentication: src/lib/auth.ts (Bcrypt, JWT, DB session verification)
+  * Media Streaming: src/lib/fileServer.ts (HTTP 206 Partial Content Range streaming)
+  * Certification: src/lib/certificateService.ts (Eligibility checks, PDF generation)
+  * Commerce: Razorpay Node SDK in payments/create-order and payments/verify.
+
+================================================================================
+8. COMPLETE PAGE AND ROUTE INVENTORY
+================================================================================
+Public / Marketing Routes:
+- / (src/app/page.tsx)
+  * Public Landing Page with hero section, platform statistics, features, and course previews.
+  * Redirects authenticated ADMIN to /admin and STUDENT to /my-courses.
+- /courses (src/app/courses/page.tsx)
+  * Course catalog with search, category filtering, and level selection.
+- /courses/[id] (src/app/courses/[id]/page.tsx)
+  * Course overview: syllabus, instructor bio, pricing, enroll/buy action buttons.
+- /careers (src/app/careers/page.tsx) & /careers/[slug] (src/app/careers/[slug]/page.tsx)
+  * Career pathway discovery, curriculum roadmap, job opportunities, and enrollments.
+- /credential-edge (src/app/credential-edge/page.tsx)
+  * Google and industry partner credential programs.
+- /projects (src/app/projects/page.tsx)
+  * Hands-on real-world capstone project catalog.
+- /certificate/verify/[code] & /certificates/verify/[code]
+  * Public certificate verification portal displaying student name, course, and issue date.
+- /login, /signup, /register
+  * Split-screen authentication pages with email/password and OAuth options.
+- /forgot-password & /reset-password
+  * Self-service password recovery flow.
+
+Protected Student Routes (Requires AUTH_TOKEN, Student Role):
+- /my-courses (src/app/my-courses/page.tsx)
+  * Primary student dashboard displaying enrolled courses, active progress, and resume links.
+- /dashboard (src/app/dashboard/page.tsx)
+  * Learning overview with KPI metrics, weekly learning goals, and certificates.
+- /my-learning (src/app/my-learning/page.tsx)
+  * Enrolled course cards, completion metrics, and continuing education roadmap.
+- /courses/[id]/learn (src/app/courses/[id]/learn/page.tsx)
+  * Full-screen interactive course classroom (videos, quizzes, projects, live classes).
+- /certificates (src/app/certificates/page.tsx) & /certificates/[id]
+  * Student earned certificates gallery with PDF download and verification links.
+- /orders & /orders/[id]
+  * Student order history, invoice details, and payment verification receipts.
+- /live-classes (src/app/live-classes/page.tsx)
+  * Upcoming live instructor webinars with Google Meet/Zoom session links.
+- /community & /community/[postId]
+  * Student discussion board, peer Q&A, and course announcements.
+- /profile (src/app/profile/page.tsx)
+  * Student profile management: resume upload, skills, education, portfolio links.
+- /settings (src/app/settings/page.tsx)
+  * Account preferences, notifications, and password change.
+
+Protected Admin Routes (Requires AUTH_TOKEN, Role: ADMIN / SUPER_ADMIN):
+- /admin (src/app/admin/page.tsx) & /admin/dashboard
+  * Executive dashboard with revenue figures, enrollment metrics, and activity charts.
+- /admin/courses (src/app/admin/courses/page.tsx)
+  * Course administration table: status toggling, deletion, analytics, and editor links.
+- /admin/courses/new & /admin/courses/add
+  * Course creation studio with multi-tab curriculum builder.
+- /admin/courses/[id]/edit
+  * Course editing studio with full curriculum, section, and lesson management.
+- /admin/courses/[id]/analytics
+  * Course-specific financial metrics, completion rates, and student roster.
+- /admin/content-studio (src/app/admin/content-studio/page.tsx)
+  * Unified curriculum authoring workspace for videos, quizzes, and projects.
+- /admin/users (src/app/admin/users/page.tsx) & /admin/users/[id]
+  * User management table: role editing (STUDENT, ADMIN, INSTRUCTOR), status toggling.
+- /admin/orders (src/app/admin/orders/page.tsx)
+  * Commercial transaction audits, Razorpay order IDs, and payment verification.
+- /admin/certificates (src/app/admin/certificates/page.tsx)
+  * Certificate issuance management, re-issuance, and revocation.
+- /admin/discounts (src/app/admin/discounts/page.tsx)
+  * Coupon code creation, percentage/flat discounts, expiry, and usage limits.
+- /admin/opportunities (src/app/admin/opportunities/page.tsx)
+  * Job opportunities, hiring partner job posts, and applicant tracking.
+- /admin/activity (src/app/admin/activity/page.tsx)
+  * Audit logs recording administrative actions, timestamps, and IP addresses.
+- /admin/settings (src/app/admin/settings/page.tsx)
+  * Platform branding, support contacts, payment keys, and system parameters.
+
+================================================================================
+9. USER ROLES AND PERMISSIONS
+================================================================================
+The LMS enforces three primary user roles defined in the users table:
+1. ADMIN (including ROLE_ADMIN, SUPER_ADMIN, ADMINISTRATOR):
+   - Permissions: Full administrative control over all platform modules.
+   - Course Access: Unlimited bypass access to all courses and learning materials
+     without payment or enrollment requirements.
+   - Prohibited Actions: Administrators cannot purchase courses or initiate student checkouts.
+   - Accessible Pages: All /admin/* routes, public catalog, and course preview classroom.
+2. STUDENT (Default role for registered users):
+   - Permissions: Can browse courses, purchase enrollments, watch lessons, take quizzes,
+     submit capstone projects, attend webinars, and download earned certificates.
+   - Restrictions: Strictly blocked from /admin/* pages (redirected to /my-courses).
+   - Course Access: Restricted strictly to paid or free enrolled courses.
+3. INSTRUCTOR / STAFF (Sub-role):
+   - Permissions: Uploading curriculum media, managing course lessons, grading projects.
+   - Inherits administrative authoring capabilities when assigned by administrators.
+
+================================================================================
+10. AUTHENTICATION AND AUTHORIZATION
+================================================================================
+- Password Authentication Flow:
+  1. Student/Admin registers via /api/auth/register or signs in via /api/auth/login.
+  2. Passwords are encrypted using bcryptjs (10 salt rounds).
+  3. Upon successful validation, a JWT token is generated containing userId, email, role, name.
+  4. The JWT token is returned in the response body and set in the HTTP-only AUTH_TOKEN cookie.
+  5. The client stores the token in localStorage and includes it in Axios Bearer headers.
+- OAuth 2.0 Integration:
+  - Supports Google OAuth login (/api/auth/callback/google, /api/auth/google).
+  - Matches or creates user record in the users table with provider = 'google'.
+- Edge Authorization Verification:
+  - src/middleware.ts intercepts incoming requests.
+  - Verifies token signature with Web Crypto HMAC-SHA256.
+  - Enforces route boundaries based on token role claims.
+
+================================================================================
+11. ADMIN WORKFLOW
+================================================================================
+1. Course Creation & Curriculum Authoring:
+   - Admin navigates to /admin/courses/new or /admin/content-studio.
+   - Enters course title, category, pricing, level, and description.
+   - Creates course sections (modules) via POST /api/admin/courses/[id]/sections.
+   - Uploads video lessons via POST /api/admin/media/upload with automated duration extraction.
+   - Creates quizzes, assigns question options, specifies passing scores and attempt limits.
+   - Creates capstone projects with requirements and submission rubrics.
+   - Schedules live classes with date, time, and Google Meet/Zoom URLs.
+   - Sets course status to Published via POST /api/admin/courses/[id]/publish.
+2. User and Enrollment Management:
+   - Views registered users list at /admin/users.
+   - Modifies user roles (STUDENT <-> ADMIN) or deactivates accounts.
+   - Audits student progress across courses at /admin/progress.
+3. Commerce and Discount Management:
+   - Audits orders and payment transactions at /admin/orders and /admin/payments.
+   - Creates promotional coupon codes with usage limits at /admin/discounts.
+
+================================================================================
+12. STUDENT WORKFLOW
+================================================================================
+1. Discovery and Purchase:
+   - Student browses course catalog at /courses or career tracks at /careers.
+   - Opens course details page at /courses/[id] to review syllabus and pricing.
+   - Clicks "Enroll Now" or "Buy Now". If unauthenticated, redirected to /login.
+   - Applies discount coupon code (validated via POST /api/discounts/validate).
+   - Initiates checkout via POST /api/payments/create-order, receiving Razorpay order ID.
+   - Completes payment in Razorpay modal.
+   - Razorpay signature verified via POST /api/payments/verify.
+   - Enrollment record provisioned in enrollments table with status ACTIVE.
+2. Learning and Assessment:
+   - Student enters course classroom at /courses/[id]/learn.
+   - Watches video lessons. Player tracks watch duration and current position.
+   - Upon reaching 90% watch threshold, lesson progress marked completed.
+   - Attempts modular quizzes. Takes timed assessment and submits answers.
+   - Uploads capstone project GitHub URL and live deployment link.
+   - Attends live webinars using meeting URL.
+3. Certification:
+   - Once all video, quiz, and project requirements are completed, course eligibility is met.
+   - Student claims certificate via POST /api/certificates/claim/[courseId].
+   - Unique certificate number and verification code issued.
+   - Student views and downloads verifiable PDF certificate.
+
+================================================================================
+13. COURSE AND MODULE MANAGEMENT
+================================================================================
+- Courses Table (courses):
+  * Stores title, slug, description, category, level, price, final_price, status, thumbnail.
+- Course Sections Table (course_sections):
+  * Modules grouping lessons, ordered by display_order.
+- Course Lessons Table (course_lessons):
+  * Stores individual learning units with lesson_type (VIDEO, QUIZ, PROJECT, LIVE_CLASS).
+  * Video lessons store content_url, duration, duration_seconds.
+  * Quiz lessons store quiz metadata (passingScore, timeLimit, maxAttempts) in description JSON.
+  * Project lessons store assignment rubrics and requirements.
+  * Live class lessons store session metadata and meeting URLs.
+
+================================================================================
+14. VIDEO AND LESSON MANAGEMENT
+================================================================================
+- Video Storage and Delivery:
+  * Uploaded videos saved to local uploads/videos directory (and public/uploads/videos).
+  * Served dynamically via src/lib/fileServer.ts and route /api/uploads/video.
+  * Full HTTP 206 Partial Content Range support ensures instant seeking and scrubbing.
+- Learning Video Player UI:
+  * Custom HTML5 video player with modern play/pause controls, volume, seeking, fullscreen.
+  * Automatic resume: Restores player to last_position_seconds from lesson_progress.
+  * Dynamic 10-second skip overlay: Appears in the final 10 seconds offering "Next Video".
+  * Centered autoplay recommendation card upon video completion.
+  * Video Watch Progress Tracking:
+    - Periodic autosave via POST /api/progress/save-progress.
+    - Watched percentage calculated from total duration and watch duration.
+    - 90% watch duration threshold automatically marks lesson completed.
+
+================================================================================
+15. QUIZ MANAGEMENT AND ATTEMPTS
+================================================================================
+- Admin Quiz Builder:
+  * Admin configures quiz title, time limit (minutes), passing score (%), and max attempts.
+  * Adds multiple-choice questions with 4 options, specifying correct option index and explanation.
+  * Stored in quiz_questions and quiz_question_options tables linked to course_lessons.
+- Student Quiz List Page (StudentQuizView.tsx):
+  * Displays quizzes in table format: Title, Time Limit, Questions, Attempts, Actions.
+  * Attempt Count: Displays used / max attempts dynamically (e.g. 0/1, 1/1, 1/2, 2/2).
+  * Start Button Logic:
+    - Enabled when usedAttempts < maxAttempts.
+    - Disabled (greyed out, non-clickable, aria-disabled="true") when usedAttempts >= maxAttempts.
+  * Network Issue Handling:
+    - Interrupted attempts count as consumed.
+    - Identified by completionReason = 'NETWORK_ISSUE' or total_duration_seconds > 0.
+    - Displays small (?) question-mark icon in Actions column next to Start button.
+    - Interactive tooltip/popover displays:
+      "This attempt was affected by a network issue while taking the quiz. The attempt has been counted. Please contact support if you need a retake."
+    - (?) icon remains visible even when Start button is disabled or attempts are exhausted.
+
+================================================================================
+16. PROJECT MANAGEMENT AND SUBMISSIONS
+================================================================================
+- Capstone Project Workflow:
+  * Defined as course_lessons with lesson_type = 'PROJECT'.
+  * Student views project brief, requirements, and submission instructions.
+  * Student submits project via POST /api/courses/[id]/lessons/[lessonId]/project.
+  * Submission fields: githubUrl, liveUrl, notes, attachmentUrl.
+  * Persisted in user_projects table with status = 'COMPLETED' or 'PENDING_REVIEW'.
+  * Lesson progress updated to completed in lesson_progress table.
+  * Admin evaluates submissions via /admin/projects.
+
+================================================================================
+17. LIVE CLASS MANAGEMENT
+================================================================================
+- Instructor Webinars Workflow:
+  * Created as course_lessons with lesson_type = 'LIVE_CLASS'.
+  * Stores topic, instructor, scheduled date, scheduled time, and meetingUrl (Google Meet/Zoom).
+  * Displayed in student classroom and at /live-classes.
+  * Dynamic status indicator: "Live Now", "Upcoming", or "Completed".
+  * Click-to-join links launch external meeting room in a new browser tab.
+
+================================================================================
+18. ENROLLMENT AND PAYMENT WORKFLOW
+================================================================================
+- Commercial Checkout Architecture:
+  1. Price Discovery: Client requests course or career track pricing.
+  2. Coupon Validation: POST /api/discounts/validate verifies coupon active status,
+     date window, minimum purchase amount, and per-user usage caps.
+  3. Order Creation: POST /api/payments/create-order:
+     - Validates user is not ADMIN.
+     - Checks existing active enrollment to prevent duplicate charges.
+     - Calculates final amount after discounts.
+     - Generates Razorpay Order via Razorpay Node SDK.
+     - Inserts record into orders table with status 'PENDING'.
+  4. Client Payment: Razorpay Checkout Web modal opens with order_id and key_id.
+  5. Payment Verification: POST /api/payments/verify:
+     - Verifies HMAC-SHA256 signature: crypto.createHmac('sha256', secret).update(order_id + '|' + payment_id).digest('hex').
+     - Updates order status to 'PAID'.
+     - Creates transaction record in payments table with status 'PAID'.
+     - Upserts record in enrollments table with status 'ACTIVE' and progress_percentage = 0.
+
+================================================================================
+19. LEARNING PROGRESS TRACKING
+================================================================================
+- Lesson Progress Tracking (lesson_progress table):
+  * Primary tracking entity linking enrollment_id and lesson_id.
+  * Fields: completed (Boolean), last_position_seconds, total_duration_seconds,
+    watch_duration_seconds, watched_percentage, completed_at, last_accessed_at.
+  * Atomic upsert via raw SQL in /api/progress/save-progress ensures multi-tab safety.
+- Overall Course Progress:
+  * Course progress percentage = (completedLessonsCount / totalLessonsCount) * 100.
+  * Stored in enrollments.progress_percentage.
+  * When progress reaches 100%, enrollment.status is set to 'COMPLETED' with completed_at timestamp.
+
+================================================================================
+20. REPORTS AND CERTIFICATION
+================================================================================
+- Certification Eligibility Engine (src/lib/certificateService.ts):
+  * Evaluates three mandatory criteria:
+    1. Video Lessons: 100% of video lessons completed (watched >= 90%).
+    2. Quiz Assessments: 100% of quizzes completed with passing score.
+    3. Capstone Projects: 100% of required projects submitted.
+  * When all criteria are satisfied, isEligible evaluates to true.
+- Certificate Generation:
+  * Claimed via POST /api/certificates/claim/[courseId].
+  * Generates unique certificate number: ING-YYYY-XXXXXX (e.g. ING-2026-000123).
+  * Generates cryptographic verification code: ING-YYYY-VXXXX (e.g. ING-2026-V8A2F).
+  * Inserts record into certificates table.
+  * Verifiable on public portal at /certificate/verify/[code].
+  * Rendered as high-resolution PDF certificate using html2canvas and jsPDF.
+
+================================================================================
+21. DATABASE TABLES AND MODELS
+================================================================================
+The PostgreSQL database managed by Prisma ORM contains 51 defined models:
+
+1. users (User accounts, roles, profiles, resumes)
+2. roles (Defined roles in legacy schema)
+3. user_roles (User to role mappings)
+4. password_reset_tokens (Password reset security tokens)
+5. user_education (Student educational degrees and institutions)
+6. user_skills (Student self-reported skills)
+7. user_projects (Student portfolio and capstone project submissions)
+8. courses (Course catalog, metadata, pricing, status)
+9. course_categories (Course categorization taxonomy)
+10. course_sections (Modules within courses)
+11. course_lessons (Individual lessons: VIDEO, QUIZ, PROJECT, LIVE_CLASS)
+12. lesson_progress (Student lesson progress, watch positions, quiz attempts)
+13. enrollments (Course enrollments and overall completion percentages)
+14. quiz_questions (Quiz assessment questions)
+15. quiz_question_options (Multiple choice answer options)
+16. orders (Commercial purchase orders)
+17. payments (Financial transactions, Razorpay IDs, signatures)
+18. discounts (Coupon codes, discount values, usage limits)
+19. discount_usages (Audit trail of applied discount coupons)
+20. certificates (Issued completion certificates and verification codes)
+21. careers (Career roadmap tracks and career programs)
+22. career_courses (Mapping of courses included in career tracks)
+23. career_enrollments (Student career track enrollments)
+24. career_skills (Skills taught within career tracks)
+25. career_opportunities (Job opportunities associated with career tracks)
+26. career_projects (Projects required in career tracks)
+27. career_roadmaps (Milestones within career tracks)
+28. career_responsibilities (Job responsibilities for career tracks)
+29. credential_courses (Partner/Google credential course programs)
+30. credential_enrollments (Student enrollments in credential courses)
+31. credential_modules (Modules within credential programs)
+32. credential_skills (Skill units within credential modules)
+33. student_skill_progress (Progress within credential skill units)
+34. skill_badges (Earned digital badges for completed credential skills)
+35. opportunities (Job board opportunities and job postings)
+36. opportunity_applications (Student job applications)
+37. saved_opportunities (Student bookmarked jobs)
+38. projects (Standalone capstone projects catalog)
+39. notifications (In-app student notifications)
+40. platform_settings (Global LMS platform configuration)
+41. admin_activity_logs (Administrative audit logs)
+42. job_roles (Career job role classifications)
+43-51. Ignored helper tables without primary keys (opportunity_benefits,
+       project_tech_stacks, project_skills_learned, etc.)
+
+================================================================================
+22. DATABASE RELATIONSHIPS AND ASCII ER DIAGRAM
+================================================================================
+
++-------------------+          +-----------------------+
+|       users       | 1      * |      enrollments      |
+|-------------------|----------|-----------------------|
+| id (UUID) [PK]    |          | id (BigInt) [PK]      |
+| email (VarChar)   |          | user_id (UUID) [FK]   |
+| password_hash     |          | course_id (BigInt)[FK]|
+| role (VarChar)    |          | progress_percentage   |
+| name (VarChar)    |          | status (VarChar)      |
++-------------------+          +-----------------------+
+        |  1                               | 1
+        |                                  |
+        |  *                               | *
++-------------------+          +-----------------------+
+|      orders       | 1      * |    lesson_progress    |
+|-------------------|----------|-----------------------|
+| id (BigInt) [PK]  |          | id (BigInt) [PK]      |
+| order_number      |          | enrollment_id [FK]    |
+| user_id (UUID)[FK]|          | lesson_id (BigInt)[FK]|
+| course_id [FK]    |          | completed (Boolean)   |
+| final_amount      |          | watch_duration_seconds|
+| status (VarChar)  |          | last_position_seconds |
++-------------------+          | watched_percentage    |
+        |  1                   +-----------------------+
+        |                                  | *
+        |  *                               |
++-------------------+                      | 1
+|     payments      |          +-----------------------+
+|-------------------|          |    course_lessons     |
+| id (BigInt) [PK]  |          |-----------------------|
+| payment_number    |          | id (BigInt) [PK]      |
+| order_id [FK]     |          | section_id (BigInt)[FK|
+| razorpay_order_id |          | title (VarChar)       |
+| payment_status    |          | lesson_type (VarChar) |
++-------------------+          | duration / content_url|
+                               +-----------------------+
+                                           | *
+                                           |
+                                           | 1
+                               +-----------------------+
+                               |    course_sections    |
+                               |-----------------------|
+                               | id (BigInt) [PK]      |
+                               | course_id (BigInt)[FK]|
+                               | title (VarChar)       |
+                               | display_order (Int)   |
+                               +-----------------------+
+                                           | *
+                                           |
+                                           | 1
++-------------------+ 1      * +-----------------------+
+|   certificates    |----------|        courses        |
+|-------------------|          |-----------------------|
+| id (BigInt) [PK]  |          | id (BigInt) [PK]      |
+| user_id (UUID)[FK]|          | title (VarChar)       |
+| course_id [FK]    |          | slug (VarChar)        |
+| certificate_number|          | price (Int)           |
+| verification_code |          | final_price (Float)   |
+| status (VarChar)  |          | published (Boolean)   |
++-------------------+          +-----------------------+
+                                           | 1
+                                           |
+                                           | *
+                               +-----------------------+
+                               |    career_courses     |
+                               |-----------------------|
+                               | id (BigInt) [PK]      |
+                               | career_id (BigInt)[FK]|
+                               | course_id (BigInt)[FK]|
+                               +-----------------------+
+                                           | *
+                                           |
+                                           | 1
+                               +-----------------------+
+                               |        careers        |
+                               |-----------------------|
+                               | id (BigInt) [PK]      |
+                               | title (VarChar)       |
+                               | slug (VarChar)        |
+                               | price / active        |
+                               +-----------------------+
+
+================================================================================
+23. COMPLETE API INVENTORY
+================================================================================
+Authentication APIs (src/app/api/auth):
+- POST /api/auth/register: User account creation with bcrypt password hashing
+- POST /api/auth/login: Email/password authentication, returns JWT token & user object
+- POST /api/auth/logout: Clears AUTH_TOKEN HTTP-only cookie
+- GET  /api/auth/me: Returns current authenticated user session
+- POST /api/auth/forgot-password: Initiates password reset token generation
+- POST /api/auth/reset-password: Validates reset token and updates password
+- GET  /api/auth/callback/[provider]: OAuth 2.0 authentication callback handler
+
+Course & Curriculum APIs (src/app/api/courses):
+- GET  /api/courses: Public courses catalog with filtering and search
+- GET  /api/courses/[id]: Course detail view by ID or slug
+- GET  /api/courses/[id]/access: Checks student enrollment, access type, and admin bypass
+- GET  /api/courses/[id]/content: Returns complete curriculum (sections, lessons, progress)
+- GET  /api/courses/[id]/learn: Verified learning classroom content for enrolled students
+- GET  /api/courses/[id]/eligibility: Evaluates course completion and certificate eligibility
+- GET  /api/courses/[id]/enrollment-status: Returns student enrollment state
+
+Quiz Assessment APIs:
+- GET  /api/courses/[id]/quiz: Returns quiz questions, options, and previous attempts
+- POST /api/courses/[id]/quiz/submit: Grades submitted quiz answers, records score,
+  updates attempt count, and flags network interruptions in lesson_progress
+- GET  /api/courses/[id]/lessons/[lessonId]/quiz: Individual quiz questions lookup
+- POST /api/courses/[id]/lessons/[lessonId]/quiz/submit: Individual quiz submission
+
+Project APIs:
+- GET  /api/courses/[id]/project: Capstone project guidelines and student submission
+- POST /api/courses/[id]/project: Submits project GitHub and live deployment links
+- GET  /api/courses/[id]/lessons/[lessonId]/project: Modular project submission details
+- POST /api/courses/[id]/lessons/[lessonId]/project: Modular project submit handler
+
+Live Class APIs:
+- GET  /api/live-classes: Returns scheduled instructor webinars and meeting URLs
+
+Learning Progress APIs (src/app/api/progress):
+- POST /api/progress/save-progress: Updates video watch position and evaluates 90% completion
+- POST /api/progress/complete-lesson: Manually marks a lesson as completed
+
+Payment & Commerce APIs (src/app/api/payments):
+- POST /api/payments/create-order: Creates Razorpay order and pending database order
+- POST /api/payments/verify: Verifies Razorpay payment signature and provisions enrollment
+- GET  /api/payments/my & /api/payments/my-payments: Student transaction history
+- POST /api/discounts/validate: Validates coupon code validity, discount, and limits
+
+Certificate APIs (src/app/api/certificates):
+- GET  /api/certificates/my: Retrieves student earned certificates
+- POST /api/certificates/claim/[courseId]: Verifies eligibility and issues new certificate
+- GET  /api/certificates/verify/[code]: Public verification lookup by verification code
+- GET  /api/certificates/[id]: Certificate metadata by ID
+- GET  /api/certificates/[id]/download: PDF download generator
+
+Admin APIs (src/app/api/admin - Requires ADMIN Role):
+- GET  /api/admin/dashboard & /api/admin/dashboard/stats: Platform KPIs and metrics
+- GET  /api/admin/courses: Course management catalog
+- POST /api/admin/courses: Creates new course
+- PUT  /api/admin/courses/[id]: Updates course details
+- DELETE /api/admin/courses/[id]: Deletes course
+- POST /api/admin/courses/[id]/publish & unpublish: Toggles publication status
+- POST /api/admin/courses/[id]/sections: Creates module section in course
+- PUT  /api/admin/sections/[id]: Updates module section
+- DELETE /api/admin/sections/[id]: Deletes module section
+- POST /api/admin/sections/[id]/lessons: Creates lesson within section
+- PUT  /api/admin/lessons/[id]: Updates lesson details, video key, duration
+- DELETE /api/admin/lessons/[id]: Deletes lesson
+- POST /api/admin/media/upload: Uploads media (videos, thumbnails) to uploads directory
+- GET  /api/admin/users: User accounts table
+- PUT  /api/admin/users/[id]/role: Updates user role (STUDENT, ADMIN, INSTRUCTOR)
+- PUT  /api/admin/users/[id]/status: Toggles user active status
+- GET  /api/admin/orders & /api/admin/payments: Financial order and payment audits
+- GET  /api/admin/certificates & POST /api/admin/certificates/generate: Certificate audits
+- PUT  /api/admin/certificates/[id]/revoke: Revokes certificate
+- GET  /api/admin/discounts & POST /api/admin/discounts: Coupon management
+- GET  /api/admin/activity-logs: Administrative action audit trails
+
+Media Streaming APIs (src/app/api/uploads):
+- GET  /api/uploads/[...path]: HTTP 206 Partial Content Range streaming of video/media files
+- GET  /api/uploads/video: Direct video streaming endpoint
+- GET  /api/uploads/pdf: Document and PDF delivery endpoint
+
+================================================================================
+24. FRONTEND-TO-BACKEND DATA FLOW
+================================================================================
+Example 1: Student Watches Video Lesson
+1. User clicks lesson in CourseLearnPage.tsx sidebar.
+2. React state activeLesson updates; HTML5 <video> src loads /api/uploads/videos/video.mp4.
+3. Browser requests video with HTTP Range header (bytes=0-...).
+4. Route handler /api/uploads/[...path] calls serveFileWithRange in src/lib/fileServer.ts.
+5. Node.js fs.createReadStream streams binary chunk with HTTP 206 Partial Content.
+6. Player triggers onTimeUpdate event. Every 5 seconds, client calls saveProgress().
+7. Axios posts payload to /api/progress/save-progress.
+8. Handler runs SQL upsert on lesson_progress. If watched >= 90%, marks completed = true.
+9. Response returns updated completion percentage; client UI updates green checkmark.
+
+Example 2: Student Takes Quiz with Network Resiliency
+1. User opens Course Quizzes tab. StudentQuizView.tsx renders quiz list.
+2. Component fetches /api/courses/[id]/content. Attempts rendered as used / max (e.g. 0/1).
+3. Student clicks Start. QuizAssessmentView loads questions from /api/courses/[id]/quiz.
+4. Student answers questions and clicks Submit.
+5. If connection active: POST /api/courses/[id]/quiz/submit grades answers, writes score,
+   and increments attempt count in lesson_progress.
+6. If network disconnection occurs during quiz submission:
+   - Frontend catches network error, marks attempt as used locally, sets hasNetworkIssue = true.
+   - Enqueues background sync once window.navigator.onLine fires.
+   - Returns to quiz list: Start button becomes disabled (1/1); small (?) icon appears.
+   - Tooltip displays network interruption explanation.
+   - State persists on backend and across page refreshes.
+
+================================================================================
+25. STATE MANAGEMENT AND DATA FETCHING
+================================================================================
+- Redux Toolkit (src/store):
+  * Central store configuring slices: authSlice, courseSlice, careerSlice, certificateSlice.
+  * Used for global caching of user session, enrolled courses, and catalog lists.
+- React Context (src/context/AuthContext.tsx):
+  * Provides useAuth() hook across components.
+  * Manages login, logout, token persistence, and active user profile.
+- Data Fetching Strategy:
+  * Axios instance with Bearer interceptors in src/api/*.
+  * React useEffect hooks trigger data fetching on component mount.
+  * Loading skeletons, spin indicators, and empty state cards handle async states.
+
+================================================================================
+26. THIRD-PARTY INTEGRATIONS
+================================================================================
+1. Razorpay Payment Gateway:
+   - Razorpay Node.js SDK 2.9.8 integrated on backend.
+   - Razorpay Web Checkout JS integrated on frontend.
+   - Order creation via razorpay.orders.create({ amount, currency: 'INR' }).
+   - Payment signature verification via HMAC-SHA256 crypto validation.
+2. Google OAuth 2.0:
+   - Integrated for single sign-on authentication.
+   - Handled via Next.js route handlers in /api/auth/callback/google.
+3. PostgreSQL Cloud Database:
+   - Hosted in AWS us-east-1 via Supabase transaction pooler.
+   - Connected via pg.Pool and PrismaPg adapter.
+4. Client-side PDF Engine:
+   - html2canvas and jsPDF generate pixel-perfect verifiable completion certificates.
+
+================================================================================
+27. ENVIRONMENT CONFIGURATION
+================================================================================
+Configuration variables specified in .env / .env.example (Secrets omitted):
+- DATABASE_URL: PostgreSQL connection string with transaction pooler support
+- DIRECT_URL: Direct PostgreSQL connection string for Prisma schema migrations
+- JWT_SECRET: Secret key for HMAC-SHA256 JWT token generation and validation
+- NEXT_PUBLIC_API_URL: Public base URL for API communication
+- RAZORPAY_KEY_ID: Razorpay public API key identifier
+- NEXT_PUBLIC_RAZORPAY_KEY_ID: Client-side Razorpay public key identifier
+- RAZORPAY_KEY_SECRET: Razorpay merchant private secret key
+- GOOGLE_CLIENT_ID: OAuth 2.0 client identifier for Google Sign-In
+- GOOGLE_CLIENT_SECRET: OAuth 2.0 client secret for Google Sign-In
+- NEXT_PUBLIC_BASE_URL: Application domain URL (e.g. http://localhost:3000)
+- PORT: Development server listening port (defaults to 3000)
+
+================================================================================
+28. LOCAL DEVELOPMENT AND DEPLOYMENT
+================================================================================
+- System Prerequisites:
+  * Node.js version >= 20.19.0
+  * npm package manager
+  * Active PostgreSQL database instance
+- Development Setup:
+  1. cd nextjs-lms
+  2. npm install
+  3. npx prisma generate
+  4. npm run dev
+  5. Application available at http://localhost:3000
+- Production Build & Deployment:
+  1. npm run build (executes prisma generate && next build)
+  2. npm start (runs high-performance production server)
+  3. Platform is fully deployable to Vercel, AWS ECS, or Node.js Docker containers.
+
+================================================================================
+29. VALIDATION AND ERROR HANDLING
+================================================================================
+- Frontend Input Validation:
+  * Form validation on login and signup for email formatting and password length.
+  * Checkout coupon validation checking alphanumeric format and expiry.
+  * Quiz option validation requiring an answer before advancing or submitting.
+- Backend Request Validation:
+  * Route handlers validate required request parameters and return HTTP 400.
+  * Token verification returns HTTP 401 if token missing or invalid.
+  * Permission checks return HTTP 403 if student attempts administrative routes.
+  * Database entity lookups return HTTP 404 if course, lesson, or user does not exist.
+  * Try/catch blocks wrap all route handlers, logging errors and returning HTTP 500 JSON.
+
+================================================================================
+30. EXISTING ISSUES AND MISSING FEATURES
+================================================================================
+Identified during comprehensive code inspection:
+1. AI Integration:
+   - Status: Not Found in codebase.
+   - Observation: No direct OpenAI, Claude, or Gemini LLM integrations or AI tutoring
+     APIs are currently implemented in the nextjs-lms codebase.
+2. In-Memory Video Upload Storage:
+   - Status: Partially Implemented / Confirmed.
+   - Observation: Videos uploaded through /api/admin/media/upload are written to local
+     disk (uploads/videos). In serverless environments like Vercel, local filesystem writes
+     are ephemeral. Production deployment requires Amazon S3 or Cloudflare R2 object storage.
+3. Database Tables without Primary Keys:
+   - Status: Confirmed in schema.prisma.
+   - Observation: Tables such as credential_course_outcomes, project_tech_stacks,
+     and opportunity_skills lack primary keys and are marked @@ignore by Prisma.
+4. Legacy Microservices:
+   - Status: Confirmed in parent workspace.
+   - Observation: Workspace contains legacy folders (Backend in Java Spring Boot,
+     frontend in Vite, and lms-email-service in Node.js). The nextjs-lms application
+     now operates as the unified full-stack platform.
+
+================================================================================
+31. END-TO-END WORKFLOW DIAGRAMS
+================================================================================
+
+Student Learning & Video Watch Flow:
+--------------------------------------------------------------------------------
+[Student Enters Classroom]
+         │
+         ▼
+[Selects Video Lesson] ────► [HTML5 Player Requests /api/uploads/video]
+         │                                    │
+         ▼                                    ▼
+[Playback Commences] ◄──────────── [HTTP 206 Partial Content Streamed]
+         │
+         ├───► Every 5s: [POST /api/progress/save-progress] ──► [Updates DB]
+         │
+         ▼
+[Reaches 90% Watch Duration] ──────────────────────────────► [Marked Completed]
+         │                                                           │
+         ▼                                                           ▼
+[Last 10 Seconds Overlay Appears] ──► [Auto-Advance to Next Video] ──┘
+
+Student Quiz Assessment Flow:
+--------------------------------------------------------------------------------
+[Opens Quizzes Tab] ──► [Checks lesson_progress: used / max Attempts]
+         │
+         ▼
+  used < max?
+    ├── YES ──► [Start Button Enabled] ──► [Takes Timed Quiz]
+    │                                             │
+    └── NO  ──► [Start Button Disabled (Grey)]    │
+                                                  ▼
+                                      [Submits Answers to API]
+                                                  │
+                                         Network Interrupted?
+                                           ├── YES ──► [Flagged NETWORK_ISSUE]
+                                           │           [Attempt Counted (1/1)]
+                                           │           [(?) Icon Shown with Tooltip]
+                                           │
+                                           └── NO  ──► [Score & Pass/Fail Saved]
+                                                       [(?) Icon NOT Shown]
+
+Commercial Checkout & Enrollment Flow:
+--------------------------------------------------------------------------------
+[Student Clicks Enroll] ──► [POST /api/payments/create-order]
+                                      │
+                                      ▼
+                        [Razorpay Order Generated]
+                        [DB Order Created (PENDING)]
+                                      │
+                                      ▼
+                        [Student Pays in Razorpay Modal]
+                                      │
+                                      ▼
+                        [POST /api/payments/verify]
+                                      │
+                         HMAC Signature Valid?
+                            ├── YES ──► [Order Marked PAID]
+                            │           [Transaction Saved in payments]
+                            │           [enrollments Provisioned (ACTIVE)]
+                            │           [Instant Access Granted]
+                            │
+                            └── NO  ──► [Payment Rejected (400)]
+
+================================================================================
+32. SECURITY AND ACCESS-CONTROL OBSERVATIONS
+================================================================================
+1. Edge Middleware Protection:
+   - src/middleware.ts guarantees that unauthenticated requests to protected student
+     or administrative routes are intercepted before hitting application code.
+2. Password Security:
+   - Passwords hashed using bcryptjs with 10 salt rounds. Plaintext passwords never stored.
+3. Cryptographic Signature Verification:
+   - Razorpay payment verifications validate HMAC-SHA256 signatures server-side.
+4. Directory Traversal Defense:
+   - src/lib/fileServer.ts strips relative path modifiers (..) to prevent unauthorized
+     access to system files.
+5. Role Separation Enforcement:
+   - Administrators cannot buy courses, and students cannot access administrative panels.
+
+================================================================================
+33. TESTING AND BUILD CONFIGURATION
+================================================================================
+- Build Command: npm run build
+  * Pre-build step executes prisma generate to sync TypeScript client types.
+  * Next.js compiler runs type checking and static analysis.
+- TypeScript Validation: npx tsc --noEmit
+  * Exits with code 0 confirming complete type safety across all files.
+- Linter: npm run lint
+  * Executes ESLint 9 using eslint-config-next.
+
+================================================================================
+34. COMPLETE FEATURE INVENTORY
+================================================================================
+[x] User Registration and Login with Bcrypt & JWT
+[x] Role-Based Route Matrix (ADMIN to /admin, STUDENT to /my-courses)
+[x] Edge Middleware Protection with Web Crypto API
+[x] Public Course Catalog & Course Detail Showcase
+[x] Commercial Checkout with Razorpay Integration
+[x] Discount Coupon Code Engine with Limits
+[x] Full-Screen Student Learning Classroom
+[x] HTTP 206 Partial Content Video Streaming Engine
+[x] 10-Second Skip Overlay & Centered Autoplay Card
+[x] 90% Watch Duration Lesson Auto-Completion
+[x] Interactive Quiz Builder with Question Banks
+[x] Timed Quiz Taking Engine with Question Review
+[x] Quiz Attempt Limit (used / max) Enforcement
+[x] Network Issue Resiliency & (?) Tooltip Popover
+[x] Capstone Project Brief & Student Submission Engine
+[x] Live Instructor Webinars & Meeting URL Launcher
+[x] Automated Course Completion Eligibility Calculator
+[x] Verifiable Certificate Generation with PDF Export
+[x] Public Certificate Verification Portal
+[x] Student Dashboard with Weekly Learning Goals
+[x] Admin Course Builder & Curriculum Studio
+[x] Admin User & Role Management Table
+[x] Admin Orders & Financial Transaction Auditing
+[x] Admin Promotional Discounts Creator
+[x] Admin Activity & Security Audit Logs
+
+================================================================================
+35. DOCUMENTATION COVERAGE AND LIMITATIONS
+================================================================================
+- Coverage:
+  * This documentation represents an exhaustive, verified analysis of the complete
+    InGage LMS codebase located in d:\Ingage project\nextjs-lms as of 2026-10-09.
+  * Every stated API route, page, database model, and workflow was inspected directly
+    from active source code files.
+- Limitations & Notes:
+  * Secrets, API keys, and private credentials have been intentionally excluded.
+  * AI tutoring or LLM conversational agents were verified as not present in the code.
+  * Video uploads are currently persisted to the local uploads directory; cloud object
+    storage (AWS S3) is recommended for scalable multi-server production deployment.
+================================================================================
+END OF COMPLETE LMS PROJECT DOCUMENTATION
+================================================================================

@@ -33,6 +33,7 @@ import { getCredentialCourses, CredentialCourseDto } from '../api/credentialApi'
 import { getAccessibleImageUrl } from '../api/authApi';
 import { UserProfile } from '../types';
 import { useAppSelector } from '../store/hooks';
+import { BrandLogo } from './brand/BrandLogo';
 
 interface HeaderProps {
   currentPath: string;
@@ -242,7 +243,7 @@ export function Header({ currentPath, onNavigate, currentUser: propUser, onOpenA
   };
 
   return (
-    <header className="sticky top-0 z-40 bg-white border-b border-gray-100 shadow-xs">
+    <header className="sticky top-0 z-[1000] w-full bg-white border-b border-gray-100 shadow-xs">
       {/* Job Role Mode Top Banner (As shown in screenshot 1 & 7) */}
       {(currentPath === '/careers' || currentPath.startsWith('/roles/') || currentPath === '/opportunities' || currentPath === '/jobs') && (
         <div className="bg-[#1e3a8a] text-white text-xs sm:text-sm py-2 px-3 sm:px-6 lg:px-8 flex items-center justify-between font-medium">
@@ -284,15 +285,12 @@ export function Header({ currentPath, onNavigate, currentUser: propUser, onOpenA
       <div className="w-full px-3 sm:px-6 lg:px-10 xl:px-16 2xl:px-20 h-16 sm:h-18 flex items-center justify-between gap-2 sm:gap-4">
         {/* Brand Logo & Left Nav */}
         <div className="flex items-center gap-2 sm:gap-5 shrink-0">
-          <button
-            id="nav-logo-btn"
+          <BrandLogo
+            role={currentUser?.role}
+            variant="header"
+            theme="light"
             onClick={() => onNavigate('/')}
-            className="flex items-center gap-1 text-left cursor-pointer group focus:outline-none"
-          >
-            <span className="text-2xl sm:text-3xl font-bold tracking-tight text-gray-900 flex items-center">
-              In<span className="text-lime-600">Gage</span>
-            </span>
-          </button>
+          />
 
           {/* Back & Home buttons (Only shown on inner pages, not on home page) */}
           {currentPath !== '/' && (
@@ -836,7 +834,7 @@ export function Header({ currentPath, onNavigate, currentUser: propUser, onOpenA
               {userMenuOpen && (
                 <div
                   id="profile-dropdown-menu"
-                  className="absolute right-0 mt-2 w-56 bg-white rounded-xl shadow-xl border border-gray-100 py-2.5 z-50 animate-in fade-in zoom-in-95 duration-150"
+                  className="absolute right-0 top-full mt-2 w-56 bg-white rounded-xl shadow-xl border border-gray-100 py-2.5 z-[1100] max-h-[calc(100vh-5rem)] overflow-y-auto animate-in fade-in zoom-in-95 duration-150"
                 >
                   {/* Section 1: Profile, Certificates, Download Center */}
                   <div className="px-2">

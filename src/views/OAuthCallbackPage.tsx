@@ -68,18 +68,37 @@ export const OAuthCallbackPage: React.FC<OAuthCallbackPageProps> = ({
         login(token, profile);
         setStatus('success');
 
+        const userRole = (user.role || '').toUpperCase().trim();
+        const isAdmin = ['ADMIN', 'ROLE_ADMIN', 'SUPER_ADMIN', 'ADMINISTRATOR'].includes(userRole);
+
         // Check for saved post-auth redirect
         const savedRedirect = sessionStorage.getItem('ingage_redirect_after_auth');
-        const resolvedTarget =
+        let resolvedTarget = isAdmin ? '/admin' : '/my-courses';
+
+        if (
           savedRedirect &&
+          savedRedirect.startsWith('/') &&
+          !savedRedirect.startsWith('//') &&
           savedRedirect !== '/login' &&
           savedRedirect !== '/signup' &&
           savedRedirect !== '/forgot-password' &&
+          savedRedirect !== '/discover' &&
           savedRedirect !== '/'
-            ? savedRedirect
-            : user.role === 'ADMIN'
-            ? '/admin'
-            : '/';
+        ) {
+          if (!isAdmin && (savedRedirect === '/admin' || savedRedirect.startsWith('/admin/'))) {
+            resolvedTarget = '/my-courses';
+          } else if (
+            isAdmin &&
+            (savedRedirect === '/my-courses' ||
+              savedRedirect.startsWith('/my-courses/') ||
+              savedRedirect === '/my-learning' ||
+              savedRedirect.startsWith('/my-learning/'))
+          ) {
+            resolvedTarget = '/admin';
+          } else {
+            resolvedTarget = savedRedirect;
+          }
+        }
 
         setTargetPath(resolvedTarget);
 
@@ -136,7 +155,7 @@ export const OAuthCallbackPage: React.FC<OAuthCallbackPageProps> = ({
           title="Create Your Account"
           subtitle="Start your learning journey today"
           successTitle="Account Created!"
-          message="Welcome to Ingage LMS. Setting up your profile..."
+          message="Welcome to InGage EduTech. Setting up your profile..."
           onClose={handleCloseModal}
         />
       )}

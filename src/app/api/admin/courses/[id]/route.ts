@@ -81,6 +81,29 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
           })),
         })),
       }));
+
+      // Compute isolated video sections (modules containing at least one valid VIDEO lesson)
+      serialized.videoSections = serialized.sections
+        .map((sec: any) => {
+          const videoLessons = (sec.lessons || []).filter(
+            (les: any) =>
+              (les.lessonType || "").toUpperCase() === "VIDEO" &&
+              les.contentUrl &&
+              String(les.contentUrl).trim().length > 0
+          );
+          return {
+            ...sec,
+            lessons: videoLessons,
+          };
+        })
+        .filter((sec: any) => sec.lessons.length > 0);
+
+      try {
+        const { searchParams } = new URL(req.url);
+        if (searchParams.get("type")?.toUpperCase() === "VIDEO") {
+          serialized.sections = serialized.videoSections;
+        }
+      } catch (e) {}
     }
 
     serialized.shortDescription = serialized.short_description || serialized.shortDescription || '';
@@ -113,9 +136,7 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
     if (body.title !== undefined) data.title = body.title.trim();
     if (body.category !== undefined) data.category = body.category;
     if (body.level !== undefined) data.level = body.level;
-    if (body.price !== undefined) data.price = Number(body.price);
-    if (body.final_price !== undefined) data.final_price = Number(body.final_price);
-    if (body.finalPrice !== undefined) data.final_price = Number(body.finalPrice);
+    if (body.price !== undefined) data.price = Math.round(Number(body.price)) || 0;
     if (body.description !== undefined) data.description = body.description;
     if (body.short_description !== undefined) data.short_description = body.short_description;
     if (body.shortDescription !== undefined) data.short_description = body.shortDescription;
@@ -126,28 +147,50 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
     if (body.duration !== undefined) data.duration = body.duration;
     if (body.instructor !== undefined) data.instructor = body.instructor;
     if (body.currency !== undefined) data.currency = body.currency;
-    if (body.discountType !== undefined) data.discount_type = body.discountType;
-    if (body.discount_type !== undefined) data.discount_type = body.discount_type;
-    if (body.discountValue !== undefined) data.discount_value = body.discountValue !== null ? Number(body.discountValue) : null;
-    if (body.discount_value !== undefined) data.discount_value = body.discount_value !== null ? Number(body.discount_value) : null;
-    
+
+    // Strict validation for discount_type check constraint: must be 'PERCENTAGE', 'FIXED_AMOUNT', or null
+    if (body.discountType !== undefined || body.discount_type !== undefined) {
+      const rawDiscType = String(body.discountType || body.discount_type || '').toUpperCase().trim();
+      if (rawDiscType === 'PERCENTAGE' || rawDiscType === 'FIXED_AMOUNT') {
+        data.discount_type = rawDiscType;
+        const val = body.discountValue !== undefined ? body.discountValue : body.discount_value;
+        data.discount_value = val != null && !isNaN(Number(val)) ? Number(val) : 0;
+      } else {
+        data.discount_type = null;
+        data.discount_value = null;
+      }
+    } else if (body.discountValue !== undefined || body.discount_value !== undefined) {
+      const val = body.discountValue !== undefined ? body.discountValue : body.discount_value;
+      data.discount_value = val != null && !isNaN(Number(val)) ? Number(val) : null;
+    }
+
     if (body.published !== undefined) {
       data.published = Boolean(body.published);
-      data.status = body.published ? "PUBLISHED" : "DRAFT";
     }
-    if (body.status !== undefined) data.status = body.status;
-
-    // Recalculate final_price if not explicitly set and price is updated
-    if (data.final_price === undefined && data.price !== undefined) {
-      const discType = data.discount_type;
-      const discVal = data.discount_value;
-      if (discType === 'PERCENTAGE' && discVal) {
-        data.final_price = Math.max(0, Math.round((data.price - (data.price * discVal) / 100) * 100) / 100);
-      } else if (discType === 'FIXED_AMOUNT' || discType === 'FLAT') {
-        data.final_price = Math.max(0, data.price - (discVal || 0));
+    if (body.status !== undefined) {
+      const rawStatus = String(body.status).toUpperCase().trim();
+      if (['DRAFT', 'PUBLISHED', 'UNPUBLISHED', 'ARCHIVED'].includes(rawStatus)) {
+        data.status = rawStatus;
       } else {
-        data.final_price = data.price;
+        data.status = data.published ? 'PUBLISHED' : 'DRAFT';
       }
+    } else if (body.published !== undefined) {
+      data.status = data.published ? 'PUBLISHED' : 'DRAFT';
+    }
+
+    // Final price calculation
+    if (body.final_price !== undefined) {
+      data.final_price = Number(body.final_price);
+    } else if (body.finalPrice !== undefined) {
+      data.final_price = Number(body.finalPrice);
+    } else if (data.discount_type === 'PERCENTAGE' && data.discount_value) {
+      const basePrice = data.price !== undefined ? data.price : 0;
+      data.final_price = Math.max(0, Math.round((basePrice - (basePrice * data.discount_value) / 100) * 100) / 100);
+    } else if (data.discount_type === 'FIXED_AMOUNT' && data.discount_value) {
+      const basePrice = data.price !== undefined ? data.price : 0;
+      data.final_price = Math.max(0, basePrice - data.discount_value);
+    } else if (data.price !== undefined) {
+      data.final_price = data.price;
     }
 
     const updated = await prisma.courses.update({
@@ -157,7 +200,7 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
 
     const serialized: any = serializeData(updated);
     serialized.shortDescription = serialized.short_description || serialized.shortDescription || "";
-    serialized.discountType = serialized.discount_type || serialized.discountType || "NONE";
+    serialized.discountType = (serialized.discount_type === 'PERCENTAGE' || serialized.discount_type === 'FIXED_AMOUNT') ? serialized.discount_type : "NONE";
     serialized.discountValue = serialized.discount_value != null ? Number(serialized.discount_value) : 0;
     serialized.finalPrice = serialized.final_price != null ? Number(serialized.final_price) : serialized.price;
 

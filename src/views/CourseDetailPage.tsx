@@ -11,6 +11,9 @@ import {
   CheckCircle2,
   Lock,
   PlayCircle,
+  HelpCircle,
+  FolderKanban,
+  Radio,
   Tag,
   Sparkles,
   AlertCircle,
@@ -40,12 +43,62 @@ declare global {
   }
 }
 
+
+type CurriculumContentType = 'VIDEO' | 'QUIZ' | 'PROJECT' | 'LIVE_CLASS';
+
+const normalizeLessonType = (type?: string): CurriculumContentType => {
+  if (!type) return 'VIDEO';
+  const clean = String(type).trim().toUpperCase().replace(/[\s-]/g, '_');
+  if (clean.includes('QUIZ')) return 'QUIZ';
+  if (clean.includes('PROJECT')) return 'PROJECT';
+  if (clean.includes('LIVE') || clean.includes('CLASS')) return 'LIVE_CLASS';
+  return 'VIDEO';
+};
+
+const curriculumTabs: Array<{
+  id: CurriculumContentType;
+  label: string;
+  icon: React.ElementType;
+  emptyMessage: string;
+  actionText: string;
+}> = [
+  {
+    id: 'VIDEO',
+    label: 'Videos',
+    icon: PlayCircle,
+    emptyMessage: 'No videos available for this course.',
+    actionText: 'Play',
+  },
+  {
+    id: 'QUIZ',
+    label: 'Quizzes',
+    icon: HelpCircle,
+    emptyMessage: 'No quizzes available for this course.',
+    actionText: 'Start Quiz',
+  },
+  {
+    id: 'PROJECT',
+    label: 'Projects',
+    icon: FolderKanban,
+    emptyMessage: 'No projects available for this course.',
+    actionText: 'View Project',
+  },
+  {
+    id: 'LIVE_CLASS',
+    label: 'Live Classes',
+    icon: Radio,
+    emptyMessage: 'No live classes available for this course.',
+    actionText: 'Join Class',
+  },
+];
+
 interface CourseDetailPageProps {
   courseId: number | string;
   onNavigate: (path: string, param?: string) => void;
   currentUser: UserProfile | null;
   onOpenAuth: (mode?: 'login' | 'signup', redirectUrl?: string) => void;
   onShowToast?: (message: string, type?: 'success' | 'info' | 'error') => void;
+  embeddedInLayout?: boolean;
 }
 
 export const CourseDetailPage: React.FC<CourseDetailPageProps> = ({
@@ -54,6 +107,7 @@ export const CourseDetailPage: React.FC<CourseDetailPageProps> = ({
   currentUser: propUser,
   onOpenAuth,
   onShowToast,
+  embeddedInLayout = false,
 }) => {
   const dispatch = useAppDispatch();
   const { user: authUser } = useAppSelector((state) => state.auth);
@@ -76,34 +130,94 @@ export const CourseDetailPage: React.FC<CourseDetailPageProps> = ({
   // Payment process state: 'idle' | 'creating_order' | 'checkout_open' | 'verifying'
   const [paymentState, setPaymentState] = useState<'idle' | 'creating_order' | 'checkout_open' | 'verifying'>('idle');
 
+  // Content type tab: VIDEO | QUIZ | PROJECT | LIVE_CLASS
+  const [activeCurriculumTab, setActiveCurriculumTab] = useState<CurriculumContentType>('VIDEO');
+
   // Accordion toggle for sections
   const [expandedSections, setExpandedSections] = useState<Record<number, boolean>>({});
 
   // Unified Access detail state (Direct course purchase, Career path inclusion, or both)
   const [accessDetail, setAccessDetail] = useState<CourseAccessDetail | null>(null);
 
-  const courseTotalVideoDuration = React.useMemo(() => {
-    if (!course?.sections) return '';
+  // Overall course duration across ALL lessons (e.g. 2 hr 28 min)
+  // Optimized single-pass calculation for total duration, tab counts, and tab durations
+  const { courseTotalAllDuration, tabCounts, tabDurations } = React.useMemo(() => {
+    const counts: Record<CurriculumContentType, number> = {
+      VIDEO: 0,
+      QUIZ: 0,
+      PROJECT: 0,
+      LIVE_CLASS: 0,
+    };
+    const sums: Record<CurriculumContentType, number> = {
+      VIDEO: 0,
+      QUIZ: 0,
+      PROJECT: 0,
+      LIVE_CLASS: 0,
+    };
     let totalSec = 0;
-    course.sections.forEach((sec: any) => {
-      (sec.lessons || []).forEach((les: any) => {
-        totalSec += parseDurationToSeconds(les.duration, les.durationSeconds);
+
+    if (course?.sections) {
+      course.sections.forEach((sec: any) => {
+        (sec.lessons || []).forEach((les: any) => {
+          const type = normalizeLessonType(les.lessonType || les.lesson_type || les.type);
+          counts[type] = (counts[type] || 0) + 1;
+          const secDuration = parseDurationToSeconds(les.duration, les.durationSeconds);
+          sums[type] += secDuration;
+          totalSec += secDuration;
+        });
       });
-    });
-    return totalSec > 0 ? formatDurationHuman(totalSec) : '';
+    }
+
+    const durations: Record<CurriculumContentType, string> = {
+      VIDEO: sums.VIDEO > 0 ? formatDurationHuman(sums.VIDEO) : '',
+      QUIZ: sums.QUIZ > 0 ? formatDurationHuman(sums.QUIZ) : '',
+      PROJECT: sums.PROJECT > 0 ? formatDurationHuman(sums.PROJECT) : '',
+      LIVE_CLASS: sums.LIVE_CLASS > 0 ? formatDurationHuman(sums.LIVE_CLASS) : '',
+    };
+
+    return {
+      courseTotalAllDuration: totalSec > 0 ? formatDurationHuman(totalSec) : '',
+      tabCounts: counts,
+      tabDurations: durations,
+    };
   }, [course?.sections]);
 
-  const numericCourseId = Number(courseId);
+  // Filtered sections for active tab only (preserving original Module 1, Module 2, Module 3... numbers)
+  const filteredCurriculumSections = React.useMemo(() => {
+    if (!course?.sections) return [];
+    return course.sections
+      .map((section: any, originalIndex: number) => {
+        const lessons = (section.lessons || []).filter((les: any) => {
+          const type = normalizeLessonType(les.lessonType || les.lesson_type || les.type);
+          return type === activeCurriculumTab;
+        });
+        return {
+          ...section,
+          moduleNumber: originalIndex + 1,
+          filteredLessons: lessons,
+        };
+      })
+      .filter((sec: any) => sec.filteredLessons.length > 0);
+  }, [course?.sections, activeCurriculumTab]);
+
+  const activeTabMeta = React.useMemo(() => {
+    return curriculumTabs.find((t) => t.id === activeCurriculumTab) || curriculumTabs[0];
+  }, [activeCurriculumTab]);
+
+  const activeTabTotalLessons = tabCounts[activeCurriculumTab] || 0;
+  const activeTabTotalDuration = tabDurations[activeCurriculumTab] || '';
+
+  const numericCourseId = !isNaN(Number(courseId)) ? Number(courseId) : (course?.id || 0);
 
   useEffect(() => {
-    if (numericCourseId) {
-      dispatch(fetchCourseContent(numericCourseId));
+    if (courseId) {
+      dispatch(fetchCourseContent(courseId));
       if (currentUser) {
-        getCourseAccessStatus(numericCourseId)
+        getCourseAccessStatus(courseId)
           .then((res) => setAccessDetail(res))
           .catch(() => {
             setAccessDetail({
-              courseId: numericCourseId,
+              courseId: Number(course?.id || numericCourseId) || 0,
               hasAccess: false,
               accessType: 'NONE',
               progressPercentage: 0,
@@ -115,18 +229,22 @@ export const CourseDetailPage: React.FC<CourseDetailPageProps> = ({
         setAccessDetail(null);
       }
     }
-  }, [numericCourseId, currentUser, dispatch]);
+  }, [courseId, numericCourseId, course?.id, currentUser, dispatch]);
 
+  // Auto-expand all sections in active tab so lessons are immediately visible
   useEffect(() => {
-    if (course?.sections && course.sections.length > 0) {
+    if (filteredCurriculumSections && filteredCurriculumSections.length > 0) {
       setExpandedSections((prev) => {
-        if (Object.keys(prev).length === 0) {
-          return { [course.sections[0].id]: true };
-        }
-        return prev;
+        const next = { ...prev };
+        filteredCurriculumSections.forEach((s: any) => {
+          if (next[s.id] === undefined) {
+            next[s.id] = true;
+          }
+        });
+        return next;
       });
     }
-  }, [course]);
+  }, [filteredCurriculumSections]);
 
   const toggleSection = (sectionId: number) => {
     setExpandedSections((prev) => ({
@@ -144,7 +262,7 @@ export const CourseDetailPage: React.FC<CourseDetailPageProps> = ({
       } catch {}
       setCouponError('Please login to apply a coupon.');
       if (onShowToast) onShowToast('Please login to apply a coupon.', 'info');
-      onOpenAuth('login', `/courses/${numericCourseId}`);
+      onOpenAuth('login', `/courses/${course?.slug || courseId}`);
       return;
     }
 
@@ -169,7 +287,7 @@ export const CourseDetailPage: React.FC<CourseDetailPageProps> = ({
     } catch (err: any) {
       if (err.response?.status === 401) {
         setCouponError('Please login to apply a coupon.');
-        onOpenAuth('login', `/courses/${numericCourseId}`);
+        onOpenAuth('login', `/courses/${course?.slug || courseId}`);
       } else {
         setCouponError('Failed to validate coupon. Please try again.');
       }
@@ -212,7 +330,7 @@ export const CourseDetailPage: React.FC<CourseDetailPageProps> = ({
         } catch {}
       }
       if (onShowToast) onShowToast('Login required to purchase this course.', 'info');
-      onOpenAuth('login', `/courses/${numericCourseId}`);
+      onOpenAuth('login', `/courses/${course?.slug || courseId}`);
       return;
     }
 
@@ -240,16 +358,14 @@ export const CourseDetailPage: React.FC<CourseDetailPageProps> = ({
 
       // Free Course: Enrolled immediately without Razorpay payment
       if (orderRes.free) {
-        if (onShowToast) onShowToast('Congratulations! You are enrolled in this free course.', 'success');
         setPaymentState('idle');
-        dispatch(fetchCourseContent(numericCourseId));
-        onNavigate('/payment/success', JSON.stringify({
-          courseTitle: course.title,
-          courseId: course.id,
-          orderNumber: 'FREE-ENROLL',
-          paymentNumber: 'FREE',
-          amountPaid: 0,
-        }));
+        dispatch(markCourseAsEnrolled(course.id));
+        dispatch(fetchCourseContent(course.slug || courseId));
+        dispatch(fetchMyEnrollments());
+        getCourseAccessStatus(course.slug || courseId)
+          .then((res) => setAccessDetail(res))
+          .catch(() => {});
+        if (onShowToast) onShowToast('Congratulations! You are enrolled in this free course. Click Start Course to begin learning.', 'success');
         return;
       }
 
@@ -267,7 +383,7 @@ export const CourseDetailPage: React.FC<CourseDetailPageProps> = ({
         key: (orderRes.keyId || 'rzp_test_TccoJ6A0ra1dCg').trim(),
         amount: orderRes.amountInPaise || Math.round((orderRes.amount || 0) * 100),
         currency: orderRes.currency || 'INR',
-        name: 'Ingage LMS',
+        name: 'InGage EduTech',
         description: `Enrollment: ${course.title}`,
         order_id: (orderRes.razorpayOrderId || (orderRes as any).orderId || '').toString().trim(),
         prefill: {
@@ -296,27 +412,23 @@ export const CourseDetailPage: React.FC<CourseDetailPageProps> = ({
             if (verifyRes.success) {
               setPaymentState('idle');
               dispatch(markCourseAsEnrolled(course.id));
-              dispatch(fetchCourseContent(numericCourseId));
+              dispatch(fetchCourseContent(course.slug || courseId));
               dispatch(fetchMyEnrollments());
-              if (onShowToast) onShowToast('Payment verified successfully! Access granted.', 'success');
-              onNavigate(
-                '/payment/success',
-                JSON.stringify({
-                  courseTitle: course.title,
-                  courseId: course.id,
-                  orderNumber: verifyRes.orderNumber,
-                  paymentNumber: verifyRes.paymentNumber,
-                  amountPaid: appliedCoupon ? appliedCoupon.finalAmount : (course.finalPrice ?? course.price),
-                })
-              );
+              getCourseAccessStatus(course.slug || courseId)
+                .then((res) => setAccessDetail(res))
+                .catch(() => {});
+              if (onShowToast) {
+                onShowToast('Payment verified successfully! Access granted. Click Start Course to begin.', 'success');
+              }
+              // STRICT LMS REQUIREMENT: Remain on exact same course details page (/courses/slug)
             } else {
               setPaymentState('idle');
-              onNavigate('/payment/failed');
+              if (onShowToast) onShowToast(verifyRes.message || 'Payment verification failed. Please try again.', 'error');
             }
           } catch (err: any) {
-            console.error(err);
+            console.error('Payment verification error:', err);
             setPaymentState('idle');
-            onNavigate('/payment/failed');
+            if (onShowToast) onShowToast(err.response?.data?.error || err.message || 'Payment verification could not be completed.', 'error');
           }
         },
       };
@@ -325,8 +437,7 @@ export const CourseDetailPage: React.FC<CourseDetailPageProps> = ({
       rzp.on('payment.failed', (failRes: any) => {
         setPaymentState('idle');
         console.error('Razorpay Payment Failed:', failRes);
-        if (onShowToast) onShowToast(failRes.error?.description || 'Payment failed.', 'error');
-        onNavigate('/payment/failed');
+        if (onShowToast) onShowToast(failRes.error?.description || 'Payment failed. Please try again.', 'error');
       });
       rzp.open();
     } catch (err: any) {
@@ -344,10 +455,24 @@ export const CourseDetailPage: React.FC<CourseDetailPageProps> = ({
     }).format(p);
   };
 
-  const isCurrentCourse = course && course.id === numericCourseId;
-  const isStillLoading = !isNaN(numericCourseId) && (loading || (!isCurrentCourse && !error));
+  const isCurrentCourse = Boolean(
+    course && (
+      (course.slug && String(course.slug).toLowerCase() === String(courseId).toLowerCase()) ||
+      (course.id && Number(course.id) === Number(courseId)) ||
+      String(course.id) === String(courseId)
+    )
+  );
+  const isStillLoading = loading || (!isCurrentCourse && !error);
 
   if (isStillLoading) {
+    if (embeddedInLayout) {
+      return (
+        <div className="flex flex-col items-center justify-center p-16 space-y-4">
+          <RefreshCw className="w-8 h-8 text-emerald-600 animate-spin" />
+          <p className="text-sm font-semibold text-gray-600">Loading course syllabus and curriculum...</p>
+        </div>
+      );
+    }
     return (
       <div className="min-h-screen bg-[#FBFBFA] flex flex-col items-center justify-center p-8 space-y-4">
         <RefreshCw className="w-8 h-8 text-lime-600 animate-spin" />
@@ -358,26 +483,24 @@ export const CourseDetailPage: React.FC<CourseDetailPageProps> = ({
 
   if (error || !course) {
     return (
-      <div className="min-h-screen bg-[#FBFBFA] flex flex-col items-center justify-center p-8 text-center">
+      <div className={`${embeddedInLayout ? 'py-16' : 'min-h-screen bg-[#FBFBFA]'} flex flex-col items-center justify-center p-8 text-center`}>
         <div className="w-12 h-12 bg-red-50 text-red-600 rounded-full flex items-center justify-center mb-4">
           <AlertCircle className="w-6 h-6" />
         </div>
         <h2 className="text-xl font-bold text-gray-900 mb-2">Course Unavailable</h2>
         <p className="text-sm text-gray-600 max-w-md mb-6">{error || 'Could not locate the requested course.'}</p>
         <div className="flex items-center gap-3">
-          {!isNaN(numericCourseId) && (
-            <button
-              onClick={() => dispatch(fetchCourseContent(numericCourseId))}
-              className="px-5 py-2.5 bg-lime-600 text-white font-semibold rounded-xl hover:bg-lime-700 transition-colors cursor-pointer"
-            >
-              Retry
-            </button>
-          )}
           <button
-            onClick={() => onNavigate('/courses')}
+            onClick={() => dispatch(fetchCourseContent(courseId))}
+            className="px-5 py-2.5 bg-emerald-600 text-white font-semibold rounded-xl hover:bg-emerald-700 transition-colors cursor-pointer"
+          >
+            Retry
+          </button>
+          <button
+            onClick={() => onNavigate(embeddedInLayout ? '/my-courses' : '/courses')}
             className="px-5 py-2.5 bg-gray-200 text-gray-800 font-semibold rounded-xl hover:bg-gray-300 transition-colors cursor-pointer"
           >
-            Back to Courses
+            {embeddedInLayout ? 'Back to My Courses' : 'Back to Courses'}
           </button>
         </div>
       </div>
@@ -389,20 +512,20 @@ export const CourseDetailPage: React.FC<CourseDetailPageProps> = ({
   const currentPayable = appliedCoupon ? appliedCoupon.finalAmount : basePrice;
 
   return (
-    <div className="min-h-screen bg-[#FBFBFA] pb-24">
+    <div className={embeddedInLayout ? "space-y-6" : "min-h-screen bg-[#FBFBFA] pb-24"}>
       {/* Top Breadcrumb Bar */}
-      <div className="bg-white border-b border-gray-200/80 sticky top-0 z-20 backdrop-blur-md bg-white/90">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3.5 flex items-center justify-between">
+      <div className={embeddedInLayout ? "flex items-center justify-between pb-3 border-b border-gray-200/80" : "bg-white border-b border-gray-200/80 sticky top-0 z-20 backdrop-blur-md bg-white/90"}>
+        <div className={embeddedInLayout ? "w-full flex items-center justify-between" : "max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3.5 flex items-center justify-between"}>
           <button
-            onClick={() => onNavigate('/courses')}
-            className="inline-flex items-center gap-2 text-xs sm:text-sm font-semibold text-gray-600 hover:text-gray-900 transition-colors cursor-pointer"
+            onClick={() => onNavigate(embeddedInLayout ? '/my-courses' : '/courses')}
+            className="inline-flex items-center gap-2 text-xs sm:text-sm font-semibold text-gray-600 hover:text-emerald-700 transition-colors cursor-pointer"
           >
             <ArrowLeft className="w-4 h-4" />
-            <span>All Courses</span>
+            <span>{embeddedInLayout ? 'Back to My Courses' : 'All Courses'}</span>
           </button>
           <div className="flex items-center gap-2">
             <span className="text-xs text-gray-400">Category:</span>
-            <span className="text-xs font-bold text-lime-700 bg-lime-50 px-2.5 py-1 rounded-full border border-lime-200/60">
+            <span className="text-xs font-bold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-200/60">
               {course.category}
             </span>
           </div>
@@ -410,7 +533,7 @@ export const CourseDetailPage: React.FC<CourseDetailPageProps> = ({
       </div>
 
       {/* Main Layout */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-8">
+      <div className={embeddedInLayout ? "" : "max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-8"}>
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           {/* Left 2 Columns: Course Information & Curriculum */}
           <div className="lg:col-span-2 space-y-8">
@@ -422,7 +545,7 @@ export const CourseDetailPage: React.FC<CourseDetailPageProps> = ({
                 </span>
                 <span className="px-3 py-1 bg-gray-100 text-gray-700 rounded-full text-xs font-medium flex items-center gap-1">
                   <Clock className="w-3.5 h-3.5 text-gray-500" />
-                  {courseTotalVideoDuration ? `Total Video Length: ${courseTotalVideoDuration}` : course.duration}
+                  {courseTotalAllDuration ? `Total Course Duration: ${courseTotalAllDuration}` : course.duration}
                 </span>
                 {hasAccess && (
                   <span className={`px-3 py-1 text-white rounded-full text-xs font-semibold flex items-center gap-1 shadow-xs ${
@@ -457,8 +580,9 @@ export const CourseDetailPage: React.FC<CourseDetailPageProps> = ({
             </div>
 
             {/* Course Curriculum & Syllabus */}
-            <div className="bg-white rounded-3xl p-6 sm:p-8 border border-gray-200/80 shadow-xs">
-              <div className="flex items-center justify-between mb-6">
+            <div className="bg-white rounded-3xl p-6 sm:p-8 border border-gray-200/80 shadow-xs space-y-6">
+              {/* Header Title & Overall Stats */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div>
                   <h2 className="text-lg sm:text-xl font-bold text-gray-900 flex items-center gap-2">
                     <Layers className="w-5 h-5 text-lime-600" />
@@ -468,21 +592,68 @@ export const CourseDetailPage: React.FC<CourseDetailPageProps> = ({
                     Structured modular path designed for comprehensive mastery
                   </p>
                 </div>
-                <span className="text-xs font-semibold text-gray-500 bg-gray-50 px-3 py-1.5 rounded-full border border-gray-200/60">
-                  {course.sections?.length || 0} Modules{courseTotalVideoDuration ? ` • ${courseTotalVideoDuration}` : ''}
+                <span className="text-xs font-semibold text-gray-500 bg-gray-50 px-3 py-1.5 rounded-full border border-gray-200/60 self-start sm:self-auto">
+                  {course.sections?.length || 0} Modules{courseTotalAllDuration ? ` • ${courseTotalAllDuration}` : ''}
                 </span>
+              </div>
+
+              {/* Lesson Type Filter Tabs */}
+              <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none border-b border-gray-100">
+                {curriculumTabs.map((tab) => {
+                  const isActive = activeCurriculumTab === tab.id;
+                  const count = tabCounts[tab.id] || 0;
+                  const TabIcon = tab.icon;
+
+                  return (
+                    <button
+                      key={tab.id}
+                      onClick={() => setActiveCurriculumTab(tab.id)}
+                      className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-semibold whitespace-nowrap transition-all cursor-pointer ${
+                        isActive
+                          ? 'bg-lime-600 text-white shadow-xs'
+                          : 'bg-gray-100 hover:bg-gray-200/80 text-gray-700 hover:text-gray-900'
+                      }`}
+                    >
+                      <TabIcon className={`w-4 h-4 ${isActive ? 'text-white' : 'text-gray-500'}`} />
+                      <span>{tab.label}</span>
+                      {count > 0 && (
+                        <span
+                          className={`px-1.5 py-0.2 rounded-full text-[10px] font-bold ${
+                            isActive ? 'bg-white/20 text-white' : 'bg-gray-200 text-gray-700'
+                          }`}
+                        >
+                          {count}
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Active Tab Subheading / Summary */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pt-1 pb-1">
+                <div className="flex items-center gap-2">
+                  <activeTabMeta.icon className="w-4 h-4 text-lime-600" />
+                  <h3 className="text-base sm:text-lg font-bold text-gray-900">{activeTabMeta.label}</h3>
+                </div>
+                {activeTabTotalLessons > 0 && (
+                  <span className="text-xs font-semibold text-gray-600 bg-gray-50 px-3 py-1 rounded-full border border-gray-200/60 self-start sm:self-auto">
+                    {activeTabTotalLessons} {activeTabTotalLessons === 1 ? 'lesson' : 'lessons'}{activeTabTotalDuration ? ` • ${activeTabTotalDuration}` : ''}
+                  </span>
+                )}
               </div>
 
               {/* Sections Accordion */}
               <div className="space-y-4">
-                {course.sections && course.sections.length > 0 ? (
-                  course.sections.map((section, idx) => {
+                {filteredCurriculumSections && filteredCurriculumSections.length > 0 ? (
+                  filteredCurriculumSections.map((section: any) => {
                     const isExpanded = expandedSections[section.id];
                     let moduleSec = 0;
-                    (section.lessons || []).forEach((les: any) => {
+                    (section.filteredLessons || []).forEach((les: any) => {
                       moduleSec += parseDurationToSeconds(les.duration, les.durationSeconds);
                     });
-                    const moduleVideoDuration = moduleSec > 0 ? formatDurationHuman(moduleSec) : '';
+                    const moduleDuration = moduleSec > 0 ? formatDurationHuman(moduleSec) : '';
+                    const LessonIcon = activeTabMeta.icon;
 
                     return (
                       <div
@@ -496,7 +667,7 @@ export const CourseDetailPage: React.FC<CourseDetailPageProps> = ({
                         >
                           <div>
                             <div className="text-xs font-semibold text-lime-700 uppercase tracking-wider mb-0.5">
-                              Module {idx + 1}
+                              Module {section.moduleNumber}
                             </div>
                             <div className="text-sm sm:text-base font-semibold text-gray-900">
                               {section.title}
@@ -509,7 +680,9 @@ export const CourseDetailPage: React.FC<CourseDetailPageProps> = ({
                           </div>
                           <div className="flex items-center gap-2 ml-4">
                             <span className="text-xs text-gray-500 font-medium whitespace-nowrap">
-                              {section.lessons?.length || 0} {section.lessons?.length === 1 ? 'lesson' : 'lessons'}{moduleVideoDuration ? ` • ${moduleVideoDuration}` : ''}
+                              {section.filteredLessons?.length || 0}{' '}
+                              {section.filteredLessons?.length === 1 ? 'lesson' : 'lessons'}
+                              {moduleDuration ? ` • ${moduleDuration}` : ''}
                             </span>
                             {isExpanded ? (
                               <ChevronUp className="w-4 h-4 text-gray-500" />
@@ -522,79 +695,101 @@ export const CourseDetailPage: React.FC<CourseDetailPageProps> = ({
                         {/* Lessons List */}
                         {isExpanded && (
                           <div className="divide-y divide-gray-100 bg-white">
-                            {section.lessons && section.lessons.length > 0 ? (
-                              section.lessons.map((lesson, lessonIdx) => (
-                                <div
-                                  key={lesson.id}
-                                  className="px-5 py-3.5 flex items-center justify-between gap-4 hover:bg-gray-50/60 transition-colors"
-                                >
-                                  <div className="flex items-center gap-3">
-                                    {lesson.locked && !hasAccess ? (
-                                      <div className="w-8 h-8 rounded-lg bg-gray-100 flex items-center justify-center text-gray-400 shrink-0">
-                                        <Lock className="w-4 h-4" />
-                                      </div>
-                                    ) : (
-                                      <div className="w-8 h-8 rounded-lg bg-lime-50 text-lime-700 flex items-center justify-center shrink-0">
-                                        <PlayCircle className="w-4 h-4" />
-                                      </div>
-                                    )}
-                                    <div>
-                                      <div className="text-sm font-semibold text-gray-900 flex items-center gap-2">
-                                        <span>{lessonIdx + 1}. {lesson.title}</span>
-                                        {lesson.freePreview && (
-                                          <span className="text-[10px] uppercase font-bold text-lime-700 bg-lime-100 px-2 py-0.5 rounded-full">
-                                            Free Preview
+                            {section.filteredLessons && section.filteredLessons.length > 0 ? (
+                              section.filteredLessons.map((lesson: any, lessonIdx: number) => {
+                                const isLocked = lesson.locked && !hasAccess;
+                                const lessonDurationDisplay =
+                                  lesson.duration && lesson.duration !== '0:00' && lesson.duration !== '0'
+                                    ? lesson.duration
+                                    : (lesson.durationSeconds && lesson.durationSeconds > 0
+                                      ? (activeTabMeta.id === 'QUIZ' || activeTabMeta.id === 'PROJECT' || activeTabMeta.id === 'LIVE_CLASS'
+                                        ? formatDurationHuman(lesson.durationSeconds)
+                                        : formatDurationMMSS(lesson.durationSeconds))
+                                      : '15 min');
+
+                                return (
+                                  <div
+                                    key={lesson.id}
+                                    className="px-5 py-3.5 flex items-center justify-between gap-4 hover:bg-gray-50/60 transition-colors"
+                                  >
+                                    <div className="flex items-center gap-3">
+                                      {isLocked ? (
+                                        <div className="w-8 h-8 rounded-lg bg-gray-100 flex items-center justify-center text-gray-400 shrink-0">
+                                          <Lock className="w-4 h-4" />
+                                        </div>
+                                      ) : (
+                                        <div className="w-8 h-8 rounded-lg bg-lime-50 text-lime-700 flex items-center justify-center shrink-0">
+                                          <LessonIcon className="w-4 h-4" />
+                                        </div>
+                                      )}
+                                      <div>
+                                        <div className="text-sm font-semibold text-gray-900 flex items-center gap-2">
+                                          <span>
+                                            {lessonIdx + 1}. {lesson.title}
                                           </span>
+                                          {lesson.freePreview && (
+                                            <span className="text-[10px] uppercase font-bold text-lime-700 bg-lime-100 px-2 py-0.5 rounded-full">
+                                              Free Preview
+                                            </span>
+                                          )}
+                                        </div>
+                                        {lesson.description && (
+                                          <p className="text-xs text-gray-500 line-clamp-1 mt-0.5">
+                                            {lesson.description}
+                                          </p>
                                         )}
                                       </div>
-                                      {lesson.description && (
-                                        <p className="text-xs text-gray-500 line-clamp-1 mt-0.5">
-                                          {lesson.description}
-                                        </p>
+                                    </div>
+
+                                    <div className="flex items-center gap-2 shrink-0">
+                                      <span className="text-xs text-gray-500 font-mono font-medium bg-gray-50 px-2 py-0.5 rounded border border-gray-200/60">
+                                        {lessonDurationDisplay}
+                                      </span>
+                                      {!isLocked ? (
+                                        <button
+                                          onClick={() => onNavigate(`/learn/${course.slug || course.id}`)}
+                                          className="text-xs font-bold text-lime-700 hover:text-lime-800 hover:underline cursor-pointer"
+                                        >
+                                          {activeTabMeta.actionText}
+                                        </button>
+                                      ) : (
+                                        <button
+                                          onClick={() => {
+                                            if (!currentUser) {
+                                              if (onShowToast)
+                                                onShowToast(
+                                                  'Please login to enroll and unlock lessons.',
+                                                  'info'
+                                                );
+                                              onOpenAuth('login', `/courses/${course?.slug || courseId}`);
+                                            } else {
+                                              if (onShowToast)
+                                                onShowToast(
+                                                  'Enroll in this course to unlock all lessons and learning materials.',
+                                                  'info'
+                                                );
+                                            }
+                                          }}
+                                          className="text-xs font-medium text-gray-400 hover:text-gray-600 cursor-pointer flex items-center gap-1"
+                                          title="Enroll in course to unlock"
+                                        >
+                                          <Lock className="w-3 h-3" />
+                                          <span>Locked</span>
+                                        </button>
                                       )}
                                     </div>
                                   </div>
-
-                                  <div className="flex items-center gap-2 shrink-0">
-                                    <span className="text-xs text-gray-500 font-mono font-medium bg-gray-50 px-2 py-0.5 rounded border border-gray-200/60">
-                                      {lesson.duration || (lesson.durationSeconds ? formatDurationMMSS(lesson.durationSeconds) : '10:00')}
-                                    </span>
-                                    {!lesson.locked || hasAccess ? (
-                                      <button
-                                        onClick={() => onNavigate(`/learn/${course.slug || course.id}`)}
-                                        className="text-xs font-bold text-lime-700 hover:text-lime-800 hover:underline cursor-pointer"
-                                      >
-                                        Play
-                                      </button>
-                                    ) : (
-                                      <button
-                                        onClick={() => {
-                                          if (!currentUser) {
-                                            if (onShowToast) onShowToast('Please login to enroll and unlock lessons.', 'info');
-                                            onOpenAuth('login', `/courses/${numericCourseId}`);
-                                          } else {
-                                            if (onShowToast) onShowToast('Enroll in this course to unlock all lessons and learning videos.', 'info');
-                                          }
-                                        }}
-                                        className="text-xs font-medium text-gray-400 hover:text-gray-600 cursor-pointer flex items-center gap-1"
-                                        title="Enroll in course to unlock"
-                                      >
-                                        <Lock className="w-3 h-3" />
-                                        <span>Locked</span>
-                                      </button>
-                                    )}
-                                  </div>
-                                </div>
-                              ))
+                                );
+                              })
                             ) : (
                               <div className="p-4 text-xs text-gray-400 text-center">
                                 Lessons being finalized by instructor.
                               </div>
                             )}
-                            {moduleVideoDuration && (
+                            {moduleDuration && section.filteredLessons.length > 1 && (
                               <div className="px-5 py-3 bg-gray-50/70 flex items-center justify-between text-xs text-gray-600 border-t border-gray-100">
                                 <span className="font-semibold text-gray-700">Total:</span>
-                                <span className="font-bold text-gray-900 font-mono">{moduleVideoDuration}</span>
+                                <span className="font-bold text-gray-900 font-mono">{moduleDuration}</span>
                               </div>
                             )}
                           </div>
@@ -603,8 +798,16 @@ export const CourseDetailPage: React.FC<CourseDetailPageProps> = ({
                     );
                   })
                 ) : (
-                  <div className="p-6 text-center text-sm text-gray-500 bg-gray-50 rounded-2xl">
-                    Full curriculum schedule will be posted shortly.
+                  <div className="py-12 px-6 text-center bg-gray-50 rounded-2xl border border-dashed border-gray-200">
+                    <div className="w-12 h-12 mx-auto mb-3 rounded-2xl bg-gray-100 flex items-center justify-center text-gray-400">
+                      <activeTabMeta.icon className="w-6 h-6" />
+                    </div>
+                    <p className="text-sm font-semibold text-gray-700">
+                      {activeTabMeta.emptyMessage}
+                    </p>
+                    <p className="text-xs text-gray-400 mt-1">
+                      Explore other learning tabs or check back soon.
+                    </p>
                   </div>
                 )}
               </div>
@@ -734,7 +937,7 @@ export const CourseDetailPage: React.FC<CourseDetailPageProps> = ({
                                 sessionStorage.setItem('ingage_pending_coupon', couponCode.trim());
                               } catch {}
                             }
-                            onOpenAuth('login', `/courses/${numericCourseId}`);
+                            onOpenAuth('login', `/courses/${course?.slug || courseId}`);
                           }}
                           className="text-xs text-lime-700 font-bold hover:underline cursor-pointer ml-2 shrink-0"
                         >
@@ -780,7 +983,13 @@ export const CourseDetailPage: React.FC<CourseDetailPageProps> = ({
                     }`}
                   >
                     <PlayCircle className="w-5 h-5" />
-                    <span>{isCareerIncludedOnly ? 'Start Learning' : 'Continue Learning'}</span>
+                    <span>
+                      {isCareerIncludedOnly
+                        ? 'Start Learning'
+                        : (accessDetail?.progressPercentage || course?.progressPercentage || 0) > 0
+                        ? 'Continue Learning'
+                        : 'Start Course'}
+                    </span>
                   </button>
                 ) : (
                   <button
@@ -809,7 +1018,7 @@ export const CourseDetailPage: React.FC<CourseDetailPageProps> = ({
                     {paymentState === 'idle' && (
                       <>
                         <Sparkles className="w-5 h-5" />
-                        <span>{isFree ? 'Enroll Free Now' : `Buy Now • ${formatPrice(currentPayable)}`}</span>
+                        <span>{isFree ? 'Enroll Free' : `Buy Course • ${formatPrice(currentPayable)}`}</span>
                       </>
                     )}
                   </button>

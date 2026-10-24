@@ -157,7 +157,7 @@ export function LearningPlayerPage({ roleId = 'data-analyst', onNavigate, onShow
 
   // IDE State
   const [userCode, setUserCode] = useState<string>(
-    '# Write your first Python program here\nprint("Hello, Ingage LMS!")\n\nname = "Data Scholar"\nprint(f"Welcome, {name}!")'
+    '# Write your first Python program here\nprint("Hello, InGage EduTech!")\n\nname = "Data Scholar"\nprint(f"Welcome, {name}!")'
   );
   const [ideOutput, setIdeOutput] = useState<string>('');
 
@@ -240,7 +240,7 @@ export function LearningPlayerPage({ roleId = 'data-analyst', onNavigate, onShow
   };
 
   const runCode = () => {
-    setIdeOutput('Executing Python 3.12 sandbox...\n> Hello, Ingage LMS!\n> Welcome, Data Scholar!\n[Process completed successfully with exit code 0]');
+    setIdeOutput('Executing Python 3.12 sandbox...\n> Hello, InGage EduTech!\n> Welcome, Data Scholar!\n[Process completed successfully with exit code 0]');
   };
 
   const currentStepData = steps.find((s) => s.id === activeStep) || steps[0];

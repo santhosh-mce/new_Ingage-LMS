@@ -150,7 +150,7 @@ export const StudentCertificatesSection: React.FC<StudentCertificatesSectionProp
               Certificates & Credentials
             </h2>
             <p className="text-xs sm:text-sm text-gray-400 max-w-xl">
-              Every course you complete generates an official, tamper-proof certificate of completion with a unique ID registered on Ingage LMS.
+              Every course you complete generates an official, tamper-proof certificate of completion with a unique ID registered on InGage EduTech.
             </p>
           </div>
 

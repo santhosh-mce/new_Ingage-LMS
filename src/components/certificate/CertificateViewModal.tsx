@@ -120,10 +120,12 @@ export const CertificateViewModal: React.FC<CertificateViewModalProps> = ({
             <IngageCertificate
               id="modal-certificate-canvas"
               studentName={certificate.studentName}
-              courseTitle={certificate.courseTitle}
+              courseTitle={certificate.courseTitle || certificate.courseName}
+              projectName={certificate.projectName || "Smart Home IoT Monitoring System"}
+              institutionName={certificate.institution || "Sathyabama Institute of Science and Technology"}
               certificateNumber={certificate.certificateNumber}
-              formattedDate={certificate.formattedDate || 'Sep 18, 2026'}
-              instructorName={certificate.instructor || 'Alex Rivera'}
+              formattedDate={certificate.formattedDate || (certificate.issuedAt ? new Date(certificate.issuedAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'long', year: 'numeric' }) : '04 October 2026')}
+              instructorName={certificate.instructor || 'Sri Harsha'}
             />
           </div>
         </div>

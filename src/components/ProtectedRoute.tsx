@@ -7,6 +7,8 @@ interface ProtectedRouteProps {
   children: React.ReactNode;
   intendedPath: string;
   pageTitle?: string;
+  userRole?: string | null;
+  requiredRole?: 'ADMIN' | 'STUDENT';
   onRequireAuth: (intendedPath: string, pageTitle?: string) => void;
   onNavigate: (path: string) => void;
 }
@@ -17,19 +19,29 @@ export function ProtectedRoute({
   children,
   intendedPath,
   pageTitle,
+  userRole,
+  requiredRole,
   onRequireAuth,
   onNavigate
 }: ProtectedRouteProps) {
   useEffect(() => {
-    if (!isLoading && !isAuthenticated) {
-      onRequireAuth(intendedPath, pageTitle);
-      if (intendedPath.startsWith('/admin')) {
+    if (!isLoading) {
+      if (!isAuthenticated) {
+        onRequireAuth(intendedPath, pageTitle);
         onNavigate('/login');
-      } else {
-        onNavigate('/');
+        return;
+      }
+
+      const roleUpper = (userRole || '').toUpperCase().trim();
+      const isAdmin = ['ADMIN', 'ROLE_ADMIN', 'SUPER_ADMIN', 'ADMINISTRATOR'].includes(roleUpper);
+
+      if (requiredRole === 'ADMIN' && !isAdmin) {
+        onNavigate('/my-courses');
+      } else if (requiredRole === 'STUDENT' && isAdmin) {
+        onNavigate('/admin');
       }
     }
-  }, [isAuthenticated, isLoading, intendedPath, pageTitle, onRequireAuth, onNavigate]);
+  }, [isAuthenticated, isLoading, intendedPath, pageTitle, userRole, requiredRole, onRequireAuth, onNavigate]);
 
   if (isLoading) {
     return (
@@ -40,6 +52,15 @@ export function ProtectedRoute({
   }
 
   if (!isAuthenticated) {
+    return null;
+  }
+
+  const roleUpper = (userRole || '').toUpperCase().trim();
+  const isAdmin = ['ADMIN', 'ROLE_ADMIN', 'SUPER_ADMIN', 'ADMINISTRATOR'].includes(roleUpper);
+  if (requiredRole === 'ADMIN' && !isAdmin) {
+    return null;
+  }
+  if (requiredRole === 'STUDENT' && isAdmin) {
     return null;
   }
 

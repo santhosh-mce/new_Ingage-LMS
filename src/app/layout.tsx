@@ -7,8 +7,8 @@ import { AppShell } from "@/components/AppShell";
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "Ingage LMS | Master In-Demand Modern Skills",
-  description: "Enterprise-grade learning platform for engineering, career roadmaps, job opportunities, and hands-on capstone projects.",
+  title: "InGage EduTech | Modern Learning Management System",
+  description: "Enterprise EdTech learning platform for student career pathways, hands-on modules, and executive institutional administration.",
 };
 
 export default function RootLayout({

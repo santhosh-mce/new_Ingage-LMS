@@ -25,7 +25,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ code: st
       verificationCode: cert.verification_code,
       studentName: cert.student_name || cert.users?.name,
       courseName: cert.course_name || cert.courses?.title,
-      instructorName: cert.instructor_name || cert.courses?.instructor || "Ingage LMS Academic Board",
+      instructorName: cert.instructor_name || cert.courses?.instructor || "InGage EduTech Academic Board",
       issueDate: cert.issued_at,
       status: cert.status,
     }));

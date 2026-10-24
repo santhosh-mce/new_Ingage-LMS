@@ -5,6 +5,9 @@ import { getSessionUser, isAdminRole } from "@/lib/auth";
 
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
+    const url = new URL(req.url);
+    const rawType = url.searchParams.get("type") || url.searchParams.get("contentType") || "";
+    const filterType = rawType ? rawType.toUpperCase() : "";
     const resolvedParams = await params;
     const rawId = resolvedParams.id;
     const numericId = Number(rawId);
@@ -55,6 +58,12 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     const courseId = Number(course.id);
     const user = await getSessionUser(req);
     const isAdmin = user && isAdminRole(user.role);
+
+    // Only allow published courses for non-admin students
+    if (!isAdmin && course.published === false) {
+      return NextResponse.json({ error: "Course is currently not available" }, { status: 404 });
+    }
+
     let isEnrolled = false;
     let progressPercentage = 0;
     let completedLessonIds: number[] = [];
@@ -63,7 +72,10 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
 
     if (isAdmin || isFreeCourse) {
       isEnrolled = true;
-    } else if (user) {
+    }
+
+    let progressMap: Record<number, any> = {};
+    if (user) {
       const enrollment = await prisma.enrollments.findUnique({
         where: {
           user_id_course_id: {
@@ -71,72 +83,93 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
             course_id: BigInt(courseId),
           },
         },
+        include: {
+          lesson_progress: true,
+        },
       });
 
       if (enrollment) {
         isEnrolled = enrollment.status === "ACTIVE" || enrollment.status === "COMPLETED";
         progressPercentage = enrollment.progress_percentage || 0;
+        completedLessonIds = (enrollment.lesson_progress || [])
+          .filter((lp) => lp.completed || (lp.watched_percentage && lp.watched_percentage >= 90))
+          .map((lp) => Number(lp.lesson_id));
+
+        (enrollment.lesson_progress || []).forEach((lp) => {
+          progressMap[Number(lp.lesson_id)] = lp;
+        });
       }
     }
 
-    const sections = (course.course_sections || []).map((sec: any) => ({
-      id: Number(sec.id),
-      title: sec.title,
-      description: sec.description || "",
-      displayOrder: sec.display_order ?? 0,
-      lessons: (sec.course_lessons || []).map((les: any) => {
-        const rawContent = les.content_url || "";
-        const cleanContent =
-          les.lesson_type === "VIDEO" &&
-          (!rawContent ||
-            rawContent.includes("commondatastorage.googleapis.com") ||
-            rawContent.includes("localhost:8080"))
-            ? "/uploads/videos/video.mp4"
-            : rawContent;
-        const isLessonLocked = !(isAdmin || isEnrolled || Boolean(les.free_preview));
+    const sections = (course.course_sections || [])
+      .map((sec: any) => {
+        const rawLessons = (sec.course_lessons || []).filter((les: any) => {
+          if (!filterType) return true;
+          const lt = (les.lesson_type || "VIDEO").toUpperCase();
+          if (filterType === "PROJECT") return lt === "PROJECT" || lt === "ASSIGNMENT";
+          if (filterType === "LIVE" || filterType === "LIVE_CLASS") return lt === "LIVE_CLASS" || lt === "LIVE";
+          return lt === filterType;
+        });
+
+        const lessons = rawLessons.map((les: any) => {
+          const rawContent = les.content_url || "";
+          const cleanContent =
+            les.lesson_type === "VIDEO" &&
+            (!rawContent ||
+              rawContent.includes("commondatastorage.googleapis.com") ||
+              rawContent.includes("localhost:8080"))
+              ? "/uploads/videos/video.mp4"
+              : rawContent;
+          const isLessonLocked = !(isAdmin || isEnrolled || Boolean(les.free_preview));
+          const effectiveContent = isLessonLocked ? null : (cleanContent || null);
+          const prog = progressMap[Number(les.id)];
+          const attemptCount = prog?.last_position_seconds || (completedLessonIds.includes(Number(les.id)) ? 1 : 0);
+          const hasNetworkIssue = Boolean(prog?.total_duration_seconds && prog.total_duration_seconds > 0);
+
+          return {
+            id: Number(les.id),
+            title: les.title,
+            description: les.description || "",
+            lessonType: les.lesson_type || "VIDEO",
+            contentUrl: effectiveContent,
+            videoUrl: effectiveContent,
+            content_url: effectiveContent,
+            duration: les.duration || "15m",
+            durationSeconds: les.duration_seconds || 900,
+            freePreview: Boolean(les.free_preview),
+            locked: isLessonLocked,
+            displayOrder: les.display_order ?? 0,
+            required: Boolean(les.required),
+            completed: completedLessonIds.includes(Number(les.id)),
+            isCompleted: completedLessonIds.includes(Number(les.id)),
+            attemptCount,
+            attemptsUsed: attemptCount,
+            networkIssue: hasNetworkIssue,
+            hasNetworkIssue,
+            networkIssuesCount: prog?.total_duration_seconds || 0,
+            lastScore: prog?.watched_percentage ?? null,
+          };
+        });
+
         return {
-          id: Number(les.id),
-          title: les.title,
-          description: les.description || "",
-          lessonType: les.lesson_type || "VIDEO",
-          contentUrl: cleanContent || null,
-          videoUrl: cleanContent || null,
-          content_url: cleanContent || null,
-          duration: les.duration || "15m",
-          durationSeconds: les.duration_seconds || 900,
-          freePreview: Boolean(les.free_preview),
-          locked: isLessonLocked,
-          displayOrder: les.display_order ?? 0,
-          required: Boolean(les.required),
+          id: Number(sec.id),
+          title: sec.title,
+          description: sec.description || "",
+          displayOrder: sec.display_order ?? 0,
+          lessons,
+          // Legacy snake_case compatibility
+          course_lessons: lessons.map((l: any) => ({
+            ...l,
+            duration_seconds: l.durationSeconds,
+            free_preview: l.freePreview,
+            lesson_type: l.lessonType,
+            content_url: l.contentUrl,
+            video_url: l.videoUrl,
+            display_order: l.displayOrder,
+          })),
         };
-      }),
-      // Legacy snake_case compatibility
-      course_lessons: (sec.course_lessons || []).map((les: any) => {
-        const rawContent = les.content_url || "";
-        const cleanContent =
-          les.lesson_type === "VIDEO" &&
-          (!rawContent ||
-            rawContent.includes("commondatastorage.googleapis.com") ||
-            rawContent.includes("localhost:8080"))
-            ? "/uploads/videos/video.mp4"
-            : rawContent;
-        const isLessonLocked = !(isAdmin || isEnrolled || Boolean(les.free_preview));
-        return {
-          id: Number(les.id),
-          title: les.title,
-          description: les.description || "",
-          duration: les.duration || "15m",
-          duration_seconds: les.duration_seconds || 900,
-          free_preview: Boolean(les.free_preview),
-          locked: isLessonLocked,
-          lesson_type: les.lesson_type || "VIDEO",
-          content_url: cleanContent || null,
-          video_url: cleanContent || null,
-          display_order: les.display_order ?? 0,
-          required: Boolean(les.required),
-        };
-      }),
-    }));
+      })
+      .filter((sec: any) => !filterType || sec.lessons.length > 0);
 
     const price = course.price != null ? Number(course.price) : 0;
     const finalPrice = course.final_price != null ? Number(course.final_price) : price;

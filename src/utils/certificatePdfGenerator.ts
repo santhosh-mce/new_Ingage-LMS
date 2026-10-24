@@ -9,6 +9,8 @@ export interface CertificateExportOptions {
   courseTitle?: string;
   certificateNumber?: string;
   formattedDate?: string;
+  projectName?: string;
+  institutionName?: string;
   instructorName?: string;
   filename?: string;
 }
@@ -64,7 +66,9 @@ export async function downloadCertificatePdfFromData(
     courseTitle = 'Full Stack Development',
     certificateNumber = 'ING-2026-7842',
     formattedDate = 'Sep 18, 2026',
-    instructorName = 'Alex Rivera',
+    projectName = 'Smart Home IoT Monitoring System',
+    institutionName = 'Sathyabama Institute of Science and Technology',
+    instructorName = 'Sri Harsha',
     filename = `Ingage-Certificate-${options.certificateNumber || 'completion'}.pdf`,
   } = options;
 
@@ -91,6 +95,8 @@ export async function downloadCertificatePdfFromData(
           id: 'temp-certificate-canvas',
           studentName,
           courseTitle,
+          projectName,
+          institutionName,
           certificateNumber,
           formattedDate,
           instructorName,

@@ -122,7 +122,7 @@ export const AdminSettingsPage: React.FC<AdminSettingsPageProps> = ({
   const [emailConfig, setEmailConfig] = useState({
     provider: 'In-App / System Logger',
     status: 'Active (In-App Verification & Database Logging)',
-    email_sender_name: 'Ingage LMS Support',
+    email_sender_name: 'InGage EduTech Support',
     email_sender_email: 'no-reply@ingage.com',
     credentialsMasked: '••••••••••••',
   });
@@ -166,7 +166,7 @@ export const AdminSettingsPage: React.FC<AdminSettingsPageProps> = ({
 
   // System Telemetry
   const [systemTelemetry, setSystemTelemetry] = useState<Record<string, any>>({
-    appName: 'Ingage LMS Platform',
+    appName: 'InGage EduTech Platform',
     appVersion: '1.0.0',
     backendStatus: 'Operational / Healthy',
     databaseStatus: 'Connected (PostgreSQL / HikariCP Pool Size: 20)',
@@ -1025,7 +1025,7 @@ export const AdminSettingsPage: React.FC<AdminSettingsPageProps> = ({
                     Payment Gateway (Razorpay)
                   </h2>
                   <p className="text-xs text-slate-400 mt-1">
-                    Ingage LMS integrates with Razorpay for secure course purchases and checkout.
+                    InGage EduTech integrates with Razorpay for secure course purchases and checkout.
                   </p>
                 </div>
 
@@ -1188,7 +1188,7 @@ export const AdminSettingsPage: React.FC<AdminSettingsPageProps> = ({
                     {
                       key: 'allow_user_registration',
                       title: 'Allow New User Registration',
-                      desc: 'Allow new students and candidates to register on Ingage LMS.',
+                      desc: 'Allow new students and candidates to register on InGage EduTech.',
                       warning: false,
                     },
                     {

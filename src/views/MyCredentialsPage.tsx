@@ -62,7 +62,7 @@ export function MyCredentialsPage({
   };
 
   const handleShare = (cred: UserCredentialDto) => {
-    const text = `I'm progressing towards my ${cred.credentialName} on InGage LMS!`;
+    const text = `I'm progressing towards my ${cred.credentialName} on InGage EduTech!`;
     if (navigator.clipboard) {
       navigator.clipboard.writeText(text);
       if (onShowToast) onShowToast('Credential text copied to clipboard!');

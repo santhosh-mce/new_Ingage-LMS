@@ -76,7 +76,7 @@ export const CertificateVerificationPage: React.FC<CertificateVerificationPagePr
             className="flex items-center gap-2 text-xs font-semibold text-slate-400 hover:text-white transition-colors cursor-pointer"
           >
             <ArrowLeft className="w-4 h-4" />
-            <span>Return to Ingage LMS</span>
+            <span>Return to InGage EduTech</span>
           </button>
 
           <span className="flex items-center gap-1.5 text-xs text-lime-400 font-medium bg-lime-500/10 border border-lime-500/20 px-3 py-1 rounded-full">

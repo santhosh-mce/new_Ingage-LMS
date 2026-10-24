@@ -37,20 +37,33 @@ export async function POST(req: Request) {
     let itemType = "COURSE";
 
     // --- 1. SINGLE SOURCE OF TRUTH: FETCH FROM DATABASE ONLY ---
+    let actualCourseBigIntId: bigint | null = null;
+
     if (courseId) {
-      const course = await prisma.courses.findUnique({
-        where: { id: BigInt(courseId) },
-      });
+      const numericId = Number(courseId);
+      let course: any = null;
+      if (!isNaN(numericId)) {
+        course = await prisma.courses.findUnique({
+          where: { id: BigInt(numericId) },
+        });
+      }
+      if (!course) {
+        course = await prisma.courses.findFirst({
+          where: { slug: String(courseId) },
+        });
+      }
 
       if (!course) {
         return NextResponse.json({ error: "Course not found." }, { status: 404 });
       }
 
+      actualCourseBigIntId = BigInt(course.id);
+
       // Check if user is already enrolled
       const existingEnrollment = await prisma.enrollments.findFirst({
         where: {
           user_id: user.id,
-          course_id: BigInt(courseId),
+          course_id: actualCourseBigIntId,
           status: { in: ["ACTIVE", "COMPLETED"] },
         },
       });
@@ -123,18 +136,18 @@ export async function POST(req: Request) {
 
     // --- 3. FREE COURSE ENROLLMENT (0 RUPEES) ---
     if (finalPayableRupees === 0) {
-      if (courseId) {
+      if (actualCourseBigIntId) {
         await prisma.enrollments.upsert({
           where: {
             user_id_course_id: {
               user_id: user.id,
-              course_id: BigInt(courseId),
+              course_id: actualCourseBigIntId,
             },
           },
           update: { status: "ACTIVE", last_accessed_at: new Date() },
           create: {
             user_id: user.id,
-            course_id: BigInt(courseId),
+            course_id: actualCourseBigIntId,
             enrolled_at: new Date(),
             progress_percentage: 0,
             status: "ACTIVE",
@@ -178,7 +191,7 @@ export async function POST(req: Request) {
       data: {
         order_number: orderNumber,
         user_id: user.id,
-        course_id: courseId ? BigInt(courseId) : null,
+        course_id: actualCourseBigIntId,
         career_id: careerId ? BigInt(careerId) : null,
         payment_type: itemType,
         original_amount: baseAmount,
@@ -206,7 +219,7 @@ export async function POST(req: Request) {
       email: user.email,
       phone: user.phone || "9999999999",
       courseTitle: title,
-      courseId: courseId ? Number(courseId) : undefined,
+      courseId: actualCourseBigIntId ? Number(actualCourseBigIntId) : undefined,
       careerId: careerId ? Number(careerId) : undefined,
       free: false,
     }));

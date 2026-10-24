@@ -7,6 +7,8 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
   try {
     const resolvedParams = await params;
     const courseId = BigInt(resolvedParams.id);
+    const { searchParams } = new URL(req.url);
+    const typeFilter = (searchParams.get("type") || searchParams.get("lessonType") || "").toUpperCase();
 
     const sections = await prisma.course_sections.findMany({
       where: { course_id: courseId },
@@ -28,7 +30,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
       },
     });
 
-    const formatted = sections.map((sec) => ({
+    let formatted = sections.map((sec) => ({
       id: Number(sec.id),
       title: sec.title,
       description: sec.description || "",
@@ -57,6 +59,52 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
         })),
       })),
     }));
+
+    // Video Curriculum Filtering:
+    // When typeFilter is "VIDEO" or unspecified (default for Video Curriculum API):
+    // 1. Filter each section's lessons to only valid VIDEO lessons (lessonType = "VIDEO" and valid contentUrl)
+    // 2. Keep section ONLY if videoLessons.length > 0
+    // 3. Do NOT return modules that contain only QUIZ, PROJECT, LIVE_CLASS, ASSIGNMENT, or empty lessons
+    if (typeFilter === "VIDEO" || !typeFilter) {
+      formatted = formatted
+        .map((sec) => {
+          const videoLessons = sec.lessons.filter(
+            (les) =>
+              (les.lessonType || "").toUpperCase() === "VIDEO" &&
+              les.contentUrl &&
+              String(les.contentUrl).trim().length > 0
+          );
+          return {
+            ...sec,
+            lessons: videoLessons,
+          };
+        })
+        .filter((sec) => sec.lessons.length > 0);
+    } else if (typeFilter === "QUIZ") {
+      formatted = formatted
+        .map((sec) => ({
+          ...sec,
+          lessons: sec.lessons.filter((les) => (les.lessonType || "").toUpperCase() === "QUIZ"),
+        }))
+        .filter((sec) => sec.lessons.length > 0);
+    } else if (typeFilter === "PROJECT") {
+      formatted = formatted
+        .map((sec) => ({
+          ...sec,
+          lessons: sec.lessons.filter((les) =>
+            ["PROJECT", "ASSIGNMENT"].includes((les.lessonType || "").toUpperCase())
+          ),
+        }))
+        .filter((sec) => sec.lessons.length > 0);
+    } else if (typeFilter === "LIVE_CLASS") {
+      formatted = formatted
+        .map((sec) => ({
+          ...sec,
+          lessons: sec.lessons.filter((les) => (les.lessonType || "").toUpperCase() === "LIVE_CLASS"),
+        }))
+        .filter((sec) => sec.lessons.length > 0);
+    }
+    // If typeFilter === "ALL", formatted is returned as-is with all sections and all lessons
 
     return NextResponse.json(serializeData(formatted));
   } catch (error: any) {

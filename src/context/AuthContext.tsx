@@ -78,6 +78,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const logout = useCallback(async () => {
     await dispatch(logoutUserThunk());
+    if (typeof window !== "undefined") {
+      window.location.replace("/login");
+    }
   }, [dispatch]);
 
   const updateUser = useCallback(

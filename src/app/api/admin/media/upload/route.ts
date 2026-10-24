@@ -3,6 +3,9 @@ import fs from "fs";
 import path from "path";
 import { getSessionUser } from "@/lib/auth";
 
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
 const ALLOWED_VIDEO_EXT = [".mp4", ".webm", ".mov", ".mkv", ".ogv"];
 const ALLOWED_IMAGE_EXT = [".jpg", ".jpeg", ".png", ".webp", ".gif", ".svg"];
 const ALLOWED_DOC_EXT = [".pdf", ".txt", ".docx", ".zip"];
@@ -10,7 +13,7 @@ const ALLOWED_DOC_EXT = [".pdf", ".txt", ".docx", ".zip"];
 export async function POST(req: Request) {
   try {
     const user = await getSessionUser(req);
-    if (user && !["ADMIN", "ROLE_ADMIN", "SUPER_ADMIN", "ADMINISTRATOR", "STAFF", "INSTRUCTOR"].includes(user.role?.toUpperCase())) {
+    if (!user || !["ADMIN", "ROLE_ADMIN", "SUPER_ADMIN", "ADMINISTRATOR", "STAFF", "INSTRUCTOR"].includes(user.role?.toUpperCase())) {
       return NextResponse.json({ error: "Forbidden: Admin access required" }, { status: 403 });
     }
 
@@ -70,6 +73,6 @@ export async function POST(req: Request) {
     });
   } catch (error: any) {
     console.error("Media upload error:", error);
-    return NextResponse.json({ error: "Failed to upload media file" }, { status: 500 });
+    return NextResponse.json({ error: error?.message || "Failed to upload media file" }, { status: 500 });
   }
 }

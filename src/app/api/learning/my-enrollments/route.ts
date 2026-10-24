@@ -24,28 +24,54 @@ export async function GET(req: Request) {
             level: true,
             duration: true,
             instructor: true,
+            course_sections: {
+              select: {
+                course_lessons: {
+                  select: { id: true },
+                },
+              },
+            },
           },
+        },
+        lesson_progress: {
+          where: {
+            OR: [
+              { completed: true },
+              { watched_percentage: { gte: 90 } },
+            ],
+          },
+          select: { lesson_id: true },
         },
       },
       orderBy: { enrolled_at: "desc" },
     });
 
-    const result = enrollments.map((e) => ({
-      id: Number(e.id),
-      courseId: Number(e.courses?.id || e.course_id),
-      courseTitle: e.courses?.title || "Course",
-      courseSlug: e.courses?.slug || "",
-      thumbnail: e.courses?.thumbnail || "",
-      category: e.courses?.category || "Development",
-      level: e.courses?.level || "Beginner",
-      duration: e.courses?.duration || "10 Hours",
-      instructor: e.courses?.instructor || "Ingage Faculty",
-      status: e.status || "ACTIVE",
-      progressPercentage: e.progress_percentage || 0,
-      enrolledAt: e.enrolled_at ? e.enrolled_at.toISOString() : "",
-      lastAccessedAt: e.last_accessed_at ? e.last_accessed_at.toISOString() : null,
-      accessType: "DIRECT_COURSE",
-    }));
+    const result = enrollments.map((e) => {
+      const totalLessons = (e.courses?.course_sections || []).reduce(
+        (acc: number, sec: any) => acc + (sec.course_lessons?.length || 0),
+        0
+      );
+      const completedLessons = e.lesson_progress?.length || 0;
+
+      return {
+        id: Number(e.id),
+        courseId: Number(e.courses?.id || e.course_id),
+        courseTitle: e.courses?.title || "Course",
+        courseSlug: e.courses?.slug || "",
+        thumbnail: e.courses?.thumbnail || "",
+        category: e.courses?.category || "Development",
+        level: e.courses?.level || "Beginner",
+        duration: e.courses?.duration || "10 Hours",
+        instructor: e.courses?.instructor || "Ingage Faculty",
+        status: e.status || "ACTIVE",
+        progressPercentage: e.progress_percentage || 0,
+        totalLessons,
+        completedLessons,
+        enrolledAt: e.enrolled_at ? e.enrolled_at.toISOString() : "",
+        lastAccessedAt: e.last_accessed_at ? e.last_accessed_at.toISOString() : null,
+        accessType: "DIRECT_COURSE",
+      };
+    });
 
     return NextResponse.json(serializeData(result));
   } catch (error: any) {

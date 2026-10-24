@@ -392,8 +392,8 @@ export const AdminDashboardPage: React.FC<{ onNavigate: (path: string) => void }
   if (loading && !overview) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[60vh] space-y-4">
-        <RefreshCw className="w-8 h-8 text-green-600 animate-spin" />
-        <p className="text-sm text-slate-500 font-medium">Syncing InGage LMS metrics...</p>
+        <RefreshCw className="w-8 h-8 text-blue-600 animate-spin" />
+        <p className="text-sm text-slate-500 font-medium">Syncing InGage EduTech Admin metrics...</p>
       </div>
     );
   }
@@ -545,9 +545,11 @@ export const AdminDashboardPage: React.FC<{ onNavigate: (path: string) => void }
                     </td>
                   </tr>
                 ) : (
-                  latestCourses.map((c: any) => (
-                    <tr key={c.courseId} className="hover:bg-slate-50/80 transition-colors">
-                      <td className="px-5 py-3.5 text-xs text-slate-400 font-bold">{c.index}</td>
+                  latestCourses.map((c: any, idx: number) => {
+                    const rowKey = c.id != null ? `course-${c.id}` : c.courseId != null ? `course-${c.courseId}` : `course-idx-${idx}`;
+                    return (
+                      <tr key={rowKey} className="hover:bg-slate-50/80 transition-colors">
+                        <td className="px-5 py-3.5 text-xs text-slate-400 font-bold">{c.index ?? idx + 1}</td>
                       <td className="px-4 py-3.5 font-semibold text-slate-900 max-w-[180px]">
                         <span className="truncate block" title={c.title}>
                           {c.title}
@@ -575,7 +577,8 @@ export const AdminDashboardPage: React.FC<{ onNavigate: (path: string) => void }
                         </button>
                       </td>
                     </tr>
-                  ))
+                    );
+                  })
                 )}
               </tbody>
             </table>
@@ -596,9 +599,10 @@ export const AdminDashboardPage: React.FC<{ onNavigate: (path: string) => void }
                   const itemTitle = act.title || (isEnrollment ? 'New enrollment' : 'New user registered');
                   const itemDesc = act.description || act.details || act.name || 'Activity update';
                   const itemTime = act.timestamp || act.created_at;
+                  const itemKey = act.id != null ? `act-${act.id}` : `act-idx-${i}`;
 
                   return (
-                    <div key={act.id || i} className="flex items-center justify-between gap-3">
+                    <div key={itemKey} className="flex items-center justify-between gap-3">
                       <div className="flex items-center gap-3 min-w-0">
                         <div
                           className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 ${

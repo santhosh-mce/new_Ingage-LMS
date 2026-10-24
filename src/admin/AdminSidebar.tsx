@@ -21,6 +21,7 @@ import {
   Target,
   Trophy,
 } from 'lucide-react';
+import { BrandLogo } from '@/components/brand/BrandLogo';
 
 export interface AdminSidebarProps {
   currentPath: string;
@@ -86,6 +87,11 @@ const navGroups: NavGroup[] = [
             icon: Trophy,
           },
         ],
+      },
+      {
+        name: 'Content Studio & Preview',
+        path: '/admin/content-studio',
+        icon: Sparkles,
       },
       {
         name: 'Categories',
@@ -256,78 +262,24 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
   };
 
   const sidebarContent = (
-    <div className="flex h-full flex-col border-r border-emerald-900/60 bg-[#08281a] text-slate-200 select-none">
+    <div className="flex h-full flex-col border-r border-slate-800/80 bg-[#0A1224] text-slate-200 select-none">
       {/* =========================================================
           BRAND HEADER
       ========================================================= */}
-      <div className="flex h-16 shrink-0 items-center gap-3 border-b border-emerald-900/50 px-4">
-        {/* Brand Icon */}
-        <div
-          className="
-            flex
-            h-10
-            w-10
-            shrink-0
-            items-center
-            justify-center
-            rounded-xl
-            border border-green-400/30
-            bg-gradient-to-br from-green-500 to-emerald-700
-            text-white
-            shadow-md
-            shadow-green-950/40
-          "
-        >
-          <GraduationCap className="h-5 w-5" />
-        </div>
-
-        {/* Title */}
-        {!collapsed && (
-          <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-2">
-              <span className="truncate text-xl font-bold tracking-tight text-white">
-                in<span className="text-lime-400">gage</span>
-              </span>
-
-              <span
-                className="
-                  shrink-0
-                  rounded-md
-                  border border-green-400/30
-                  bg-green-500/15
-                  px-1.5
-                  py-0.5
-                  text-[10px]
-                  font-semibold
-                  uppercase
-                  tracking-wider
-                  text-green-300
-                "
-              >
-                Admin
-              </span>
-            </div>
-
-            <p className="mt-0.5 text-xs font-normal text-emerald-200/70">
-              LMS Admin Panel
-            </p>
-          </div>
-        )}
+      <div className="flex h-20 shrink-0 items-center justify-between border-b border-slate-800/80 px-4">
+        <BrandLogo
+          role="ADMIN"
+          variant="sidebar"
+          collapsed={collapsed}
+          theme="dark"
+          href="/admin"
+        />
 
         {/* Mobile Close */}
         <button
           type="button"
           onClick={onCloseMobile}
-          className="
-            ml-auto
-            rounded-lg
-            p-1.5
-            text-emerald-300/70
-            transition-colors
-            hover:bg-white/10
-            hover:text-white
-            md:hidden
-          "
+          className="ml-auto rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-slate-800 hover:text-white md:hidden cursor-pointer"
           aria-label="Close sidebar"
         >
           <X className="h-5 w-5" />
@@ -345,7 +297,7 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
           py-3
           scrollbar-thin
           scrollbar-track-transparent
-          scrollbar-thumb-emerald-900
+          scrollbar-thumb-slate-800
         "
       >
         <div className="space-y-4">
@@ -362,7 +314,7 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
                     font-semibold
                     uppercase
                     tracking-wider
-                    text-emerald-400/80
+                    text-blue-400/90
                   "
                 >
                   {group.title}
@@ -397,18 +349,19 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
                         ${active ? 'font-semibold' : 'font-medium'}
                         transition-all
                         duration-200
+                        cursor-pointer
 
                         ${
                           active
                             ? `
-                              bg-green-600
+                              bg-blue-600
                               text-white
                               shadow-md
-                              shadow-green-950/30
+                              shadow-blue-950/30
                             `
                             : `
-                              text-emerald-100/75
-                              hover:bg-white/[0.07]
+                              text-slate-300
+                              hover:bg-slate-800/60
                               hover:text-white
                             `
                         }
@@ -428,7 +381,7 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
                           ${
                             active
                               ? 'text-white'
-                              : 'text-emerald-300/70 group-hover:text-green-300'
+                              : 'text-slate-400 group-hover:text-blue-400'
                           }
                         `}
                       />
@@ -469,10 +422,10 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
 
                         ${
                           active && !collapsed
-                            ? 'bg-white/[0.08] text-white font-semibold'
+                            ? 'bg-blue-950/40 text-blue-200 font-semibold border border-blue-800/30'
                             : active && collapsed
-                            ? 'bg-green-600 text-white shadow-md'
-                            : 'text-emerald-100/75 hover:bg-white/[0.07] hover:text-white'
+                            ? 'bg-blue-600 text-white shadow-md'
+                            : 'text-slate-300 hover:bg-slate-800/60 hover:text-white'
                         }
 
                         ${collapsed ? 'justify-center px-2' : ''}
@@ -488,8 +441,8 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
                             duration-200
                             ${
                               active
-                                ? 'text-green-300'
-                                : 'text-emerald-300/70 group-hover:text-green-300'
+                                ? 'text-blue-400'
+                                : 'text-slate-400 group-hover:text-blue-400'
                             }
                           `}
                         />
@@ -503,7 +456,7 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
                       {!collapsed && (
                         <span
                           onClick={toggleCoursesDropdown}
-                          className="p-1 rounded-md hover:bg-white/10 text-emerald-300/70 group-hover:text-white transition-colors"
+                          className="p-1 rounded-md hover:bg-slate-800 text-slate-400 group-hover:text-white transition-colors"
                         >
                           {coursesExpanded ? (
                             <ChevronDown className="h-4 w-4" />
@@ -516,7 +469,7 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
 
                     {/* Sub-Items Menu Tree */}
                     {!collapsed && coursesExpanded && (
-                      <div className="pl-4 pr-1 py-1 space-y-1 border-l-2 border-emerald-800/40 ml-5 my-1 animate-in fade-in slide-in-from-top-1 duration-150">
+                      <div className="pl-4 pr-1 py-1 space-y-1 border-l-2 border-slate-800 ml-5 my-1 animate-in fade-in slide-in-from-top-1 duration-150">
                         {item.children?.map((sub) => {
                           const SubIcon = sub.icon;
                           const subActive = isSubItemActive(sub.path);
@@ -540,8 +493,8 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
                                 cursor-pointer
                                 ${
                                   subActive
-                                    ? 'bg-green-600 text-white font-semibold shadow-xs'
-                                    : 'text-emerald-200/70 hover:bg-white/[0.08] hover:text-white'
+                                    ? 'bg-blue-600 text-white font-semibold shadow-xs'
+                                    : 'text-slate-400 hover:bg-slate-800/70 hover:text-white'
                                 }
                               `}
                             >
@@ -550,7 +503,7 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
                                   h-3.5
                                   w-3.5
                                   shrink-0
-                                  ${subActive ? 'text-white' : 'text-emerald-400/70'}
+                                  ${subActive ? 'text-white' : 'text-slate-400'}
                                 `}
                               />
                               <span className="truncate">{sub.name}</span>
@@ -575,8 +528,8 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
           shrink-0
           space-y-1
           border-t
-          border-emerald-900/50
-          bg-[#062015]
+          border-slate-800/80
+          bg-[#070d1a]
           p-2.5
         "
       >
@@ -595,8 +548,9 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
             py-2.5
             text-sm
             font-medium
-            text-emerald-200/75
+            text-slate-300
             transition-colors
+            cursor-pointer
 
             hover:bg-rose-500/15
             hover:text-rose-200
@@ -622,11 +576,12 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
             justify-center
             rounded-xl
             p-2
-            text-emerald-300/60
+            text-slate-400
             transition-colors
-            hover:bg-white/[0.07]
+            hover:bg-slate-800/60
             hover:text-white
             md:flex
+            cursor-pointer
           "
         >
           {collapsed ? (

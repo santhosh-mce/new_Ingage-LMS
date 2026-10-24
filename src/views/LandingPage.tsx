@@ -512,14 +512,14 @@ export function LandingPage({ onNavigate }: LandingPageProps) {
         </div>
       </section>
 
-      {/* 4. WHY CHOOSE INGAGE LMS */}
+      {/* 4. WHY CHOOSE INGAGE EDUTECH */}
       <section className="py-20 bg-gray-50/60 border-t border-gray-100 w-full">
         <div className="w-full px-4 sm:px-8 lg:px-12 xl:px-16 2xl:px-20 text-center">
           <h2 className="text-2xl sm:text-3xl font-bold text-gray-900 tracking-tight">
-            Why Choose Ingage LMS
+            Why Choose InGage EduTech
           </h2>
           <p className="mt-2.5 text-sm sm:text-base text-gray-600 max-w-2xl mx-auto font-normal">
-            Designed for professionals who want to advance their careers with targeted, practical learning
+            Designed for learners and professionals who want to advance their careers with targeted, practical learning
           </p>
 
           <div className="mt-14 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 text-left">
@@ -624,7 +624,7 @@ export function LandingPage({ onNavigate }: LandingPageProps) {
             Who It&apos;s For
           </h2>
           <p className="mt-2.5 text-sm sm:text-base text-gray-600 font-normal">
-            Whether you&apos;re starting out or leveling up, Ingage LMS has a path for you
+            Whether you&apos;re starting out or leveling up, InGage EduTech has a path for you
           </p>
 
           <div className="mt-14 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 text-left">

@@ -35,6 +35,8 @@ export interface CertificateDto {
   verificationUrl: string;
   downloadUrl: string;
   viewUrl?: string;
+  projectName?: string;
+  institution?: string;
 }
 
 export interface CertificateVerificationDto {
@@ -193,4 +195,41 @@ export async function downloadPublicCertificatePdf(codeOrNumber: string, certifi
   link.click();
   document.body.removeChild(link);
   window.URL.revokeObjectURL(downloadUrl);
+}
+
+export interface CourseEligibilityDto {
+  isEligible: boolean;
+  completionPercentage: number;
+  videos: {
+    completed: number;
+    total: number;
+    passed: boolean;
+  };
+  quizzes: {
+    completed: number;
+    total: number;
+    passed: boolean;
+  };
+  projects: {
+    completed: number;
+    total: number;
+    passed: boolean;
+    projectName: string;
+    status: string;
+    submissionDate: string | null;
+    score: number | null;
+    reviewedBy: string;
+  };
+  finalAssessment: {
+    exists: boolean;
+    passed: boolean;
+  };
+  studentName: string;
+  courseTitle: string;
+  certificate: CertificateDto | null;
+}
+
+export async function getCourseEligibility(courseId: number | string): Promise<CourseEligibilityDto> {
+  const res = await api.get<CourseEligibilityDto>(`/courses/${courseId}/eligibility`);
+  return res.data;
 }

@@ -305,7 +305,7 @@ export const AdminInGageCoursesPage: React.FC<AdminInGageCoursesPageProps> = ({
             <p className="text-sm text-slate-500 mt-1">
               {searchQuery || statusFilter !== 'ALL' || categoryFilter !== 'ALL' || levelFilter !== 'ALL'
                 ? 'Try adjusting your search query or active filter tags.'
-                : 'Get started by creating your first course on InGage LMS.'}
+                : 'Get started by creating your first course on InGage EduTech.'}
             </p>
           </div>
           <button
@@ -345,7 +345,7 @@ export const AdminInGageCoursesPage: React.FC<AdminInGageCoursesPageProps> = ({
                   ) : (
                     <div className="w-full h-full flex flex-col items-center justify-center text-slate-400 bg-gradient-to-br from-slate-50 to-slate-100">
                       <BookOpen className="w-10 h-10 text-slate-300 mb-1" />
-                      <span className="text-xs font-medium text-slate-400">InGage LMS</span>
+                      <span className="text-xs font-medium text-slate-400">InGage EduTech</span>
                     </div>
                   )}
 

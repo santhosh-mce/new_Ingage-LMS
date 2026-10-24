@@ -45,3 +45,9 @@ next-env.d.ts
 !.env.example
 /public/uploads/*
 !/public/uploads/.gitkeep
+/uploads/videos/*
+!/uploads/videos/video.mp4
+!/uploads/videos/.gitkeep
+/uploads/thumbnails/*
+!/uploads/thumbnails/f0015244494c43f19a8229c570fe0165.png
+!/uploads/thumbnails/.gitkeep

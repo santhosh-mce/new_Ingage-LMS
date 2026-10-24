@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const apiClient = axios.create({
+export const apiClient = axios.create({
   baseURL: process.env.NEXT_PUBLIC_API_BASE_URL || '/api' || 'http://localhost:8080/api',
   headers: {
     'Content-Type': 'application/json',
@@ -85,6 +85,8 @@ export interface UserEnrollmentRecord {
   careerPathId?: number | null;
   careerPathName?: string | null;
   careerPathSlug?: string | null;
+  totalLessons?: number;
+  completedLessons?: number;
 }
 
 export interface CourseAccessDetail {
@@ -227,9 +229,13 @@ export const getMyEnrollments = async (): Promise<UserEnrollmentRecord[]> => {
   return res.data;
 };
 
-// 6. Get Course Curriculum & Content (Enforces secure access)
-export const getCourseContent = async (courseId: number | string): Promise<CourseContentDetail> => {
-  const res = await apiClient.get<CourseContentDetail>(`/courses/${courseId}/content`);
+// 6. Get Course Curriculum & Content (Enforces secure access and optional content-type filtering)
+export const getCourseContent = async (
+  courseId: number | string,
+  contentType?: string
+): Promise<CourseContentDetail> => {
+  const url = contentType ? `/courses/${courseId}/content?type=${contentType}` : `/courses/${courseId}/content`;
+  const res = await apiClient.get<CourseContentDetail>(url);
   return res.data;
 };
 
